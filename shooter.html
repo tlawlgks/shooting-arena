@@ -124,6 +124,11 @@
   body.touch #mini{width:96px;height:96px;left:8px;top:8px}body.touch #feed{top:112px}
   #low{position:fixed;inset:0;background:radial-gradient(transparent 45%,#c00c);opacity:0;pointer-events:none;transition:opacity .3s}
   .tb{box-sizing:border-box}
+  #joybase{left:105px;top:calc(100% - 115px);width:130px;height:130px;box-sizing:border-box;touch-action:none}
+  #joyknob{width:44%;height:44%}
+  body.touch #joybase{display:block;pointer-events:auto}
+  #hud.edit #joybase{display:block;pointer-events:auto;cursor:grab}
+  #joybase.sel{outline:3px solid #ffd24a;outline-offset:2px}
   #hud.edit .tb{display:flex;cursor:grab}
   #hud.edit #tz,#hud.edit #dead,#hud.edit #count,#hud.edit #rot{display:none!important}
   .tb.sel{outline:3px solid #ffd24a;outline-offset:2px}
@@ -238,7 +243,7 @@
 
 <!-- 터치 버튼 배치 편집 도구 -->
 <div id="tbar">
-  <div><b>터치 버튼 배치</b><br><small style="color:#9fb0cc">버튼을 끌어서 옮기세요 · 누른 버튼의 크기를 아래에서 조절 · 가로 화면 권장<br>로그인하면 계정에 저장되어 다른 기기에서도 그대로 적용돼요</small></div>
+  <div><b>터치 버튼 배치</b><br><small style="color:#9fb0cc">버튼과 이동 조이스틱을 끌어서 옮기세요 · 누른 것의 크기를 아래에서 조절 · 가로 화면 권장<br>로그인하면 계정에 저장되어 다른 기기에서도 그대로 적용돼요</small></div>
   <div class="setrow">크기 <span id="te-name" style="color:#ffd24a"></span><input type="range" id="te-size" min="36" max="160" step="2"><b id="te-sv"></b></div>
   <div class="setrow">투명도 <input type="range" id="te-op" min="0.2" max="1" step="0.05"><b id="te-ov"></b></div>
   <div class="row"><button class="sm" id="te-reset">초기화</button><button class="sm pri" id="te-done">완료</button></div>
@@ -964,25 +969,29 @@ if(matchMedia('(pointer:coarse)').matches)setTouch(true);
 document.addEventListener('touchstart',()=>{if(!freeMode&&screen==='game')setTouch(true)},{passive:true});
 {
   const tz=$('tz'),jb=$('joybase'),jk=$('joyknob');let tj=null,tl=null;
+  // 이동 조이스틱: 고정된 위치(설정에서 변경 가능)에 항상 보임
+  const joyMove=t=>{
+    const r=jb.getBoundingClientRect(),R=r.width*0.36;
+    let dx=t.clientX-(r.left+r.width/2),dy=t.clientY-(r.top+r.height/2);const d=Math.hypot(dx,dy);if(d>R){dx*=R/d;dy*=R/d}
+    joy.x=dx/R;joy.y=dy/R;vSprint=Math.hypot(joy.x,joy.y)>0.95; // 끝까지 밀면 달리기
+    jk.style.transform='translate(calc(-50% + '+dx+'px),calc(-50% + '+dy+'px))';
+  };
+  const joyEnd=e=>{for(const t of e.changedTouches)if(tj!==null&&t.identifier===tj){tj=null;joy.x=joy.y=0;vSprint=false;jk.style.transform='translate(-50%,-50%)'}};
+  jb.addEventListener('touchstart',e=>{e.preventDefault();if(editing||tj!==null)return;const t=e.changedTouches[0];tj=t.identifier;joyMove(t)},{passive:false});
+  jb.addEventListener('touchmove',e=>{e.preventDefault();if(editing)return;for(const t of e.changedTouches)if(t.identifier===tj)joyMove(t)},{passive:false});
+  jb.addEventListener('touchend',joyEnd);jb.addEventListener('touchcancel',joyEnd);
+  // 시점: 버튼과 조이스틱을 뺀 화면 어디든 끌면 회전
   tz.addEventListener('touchstart',e=>{e.preventDefault();
-    for(const t of e.changedTouches){
-      if(t.clientX<innerWidth*0.45&&!tj){tj={id:t.identifier,x:t.clientX,y:t.clientY};jb.style.display='block';jb.style.left=t.clientX+'px';jb.style.top=t.clientY+'px';jk.style.transform='translate(-50%,-50%)'}
-      else if(!tl)tl={id:t.identifier,x:t.clientX,y:t.clientY};
-    }},{passive:false});
+    for(const t of e.changedTouches)if(!tl)tl={id:t.identifier,x:t.clientX,y:t.clientY};
+  },{passive:false});
   tz.addEventListener('touchmove',e=>{e.preventDefault();
     for(const t of e.changedTouches){
-      if(tj&&t.identifier===tj.id){
-        let dx=t.clientX-tj.x,dy=t.clientY-tj.y;const R=55,d=Math.hypot(dx,dy);if(d>R){dx*=R/d;dy*=R/d}
-        joy.x=dx/R;joy.y=dy/R;vSprint=Math.hypot(joy.x,joy.y)>0.95;
-        jk.style.transform='translate(calc(-50% + '+dx+'px),calc(-50% + '+dy+'px))';
-      }else if(tl&&t.identifier===tl.id&&P.w.length){
+      if(tl&&t.identifier===tl.id&&P.w.length){
         const k=0.0045*SET.sens/(zoomed()?AZ():1);
         P.yaw-=(t.clientX-tl.x)*k;P.pitch=Math.max(-1.5,Math.min(1.5,P.pitch-(t.clientY-tl.y)*k));tl.x=t.clientX;tl.y=t.clientY;
       }
     }},{passive:false});
-  const tend=e=>{for(const t of e.changedTouches){
-    if(tj&&t.identifier===tj.id){tj=null;joy.x=joy.y=0;vSprint=false;jb.style.display='none'}
-    if(tl&&t.identifier===tl.id)tl=null}};
+  const tend=e=>{for(const t of e.changedTouches)if(tl&&t.identifier===tl.id)tl=null};
   tz.addEventListener('touchend',tend);tz.addEventListener('touchcancel',tend);
 }
 function tbtn(id,down,up){
@@ -1039,11 +1048,12 @@ function pollPad(dt){
 
 loop();
 // ---- 터치 버튼 배치 사용자화 (위치 %, 크기 px, 투명도 → 설정에 저장) ----
-const TB_IDS=['fire','jump','reload','swap','zoom','prone'];let editing=false,teSel=null;
+const TB_IDS=['fire','jump','reload','swap','zoom','prone','joy'];let editing=false,teSel=null;
+const tbEl=id=>id==='joy'?$('joybase'):$('tb-'+id);
 const saveSet=()=>{try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}};
 function applyTouchLayout(){
   for(const id of TB_IDS){
-    const el=$('tb-'+id),c=SET.tb&&SET.tb[id];
+    const el=tbEl(id),c=SET.tb&&SET.tb[id];
     if(c)Object.assign(el.style,{left:c.x+'%',top:c.y+'%',right:'auto',bottom:'auto',width:c.s+'px',height:c.s+'px',transform:'translate(-50%,-50%)',fontSize:Math.max(10,Math.round(c.s*0.2))+'px'});
     else for(const k of ['left','top','right','bottom','width','height','transform','fontSize'])el.style[k]='';
     el.style.opacity=SET.tbOp||'';
@@ -1052,14 +1062,14 @@ function applyTouchLayout(){
 function materialize(){ // 아직 저장값이 없는 버튼은 현재 화면 위치에서 읽어옴
   SET.tb=SET.tb||{};
   for(const id of TB_IDS){
-    if(SET.tb[id])continue;const r=$('tb-'+id).getBoundingClientRect();
+    if(SET.tb[id])continue;const r=tbEl(id).getBoundingClientRect();
     SET.tb[id]={x:+((r.left+r.width/2)/innerWidth*100).toFixed(2),y:+((r.top+r.height/2)/innerHeight*100).toFixed(2),s:Math.round(r.width)};
   }
   applyTouchLayout();
 }
 function teSelect(id){
-  teSel=id;for(const k of TB_IDS)$('tb-'+k).classList.toggle('sel',k===id);
-  if(id){$('te-size').value=SET.tb[id].s;$('te-sv').textContent=SET.tb[id].s+'px';$('te-name').textContent=$('tb-'+id).textContent}
+  teSel=id;for(const k of TB_IDS)tbEl(k).classList.toggle('sel',k===id);
+  if(id){const sl=$('te-size');sl.min=id==='joy'?80:36;sl.max=id==='joy'?260:160;sl.value=SET.tb[id].s;$('te-sv').textContent=SET.tb[id].s+'px';$('te-name').textContent=id==='joy'?'이동 조이스틱':tbEl(id).textContent}
 }
 function openEditor(){
   editing=true;setScreen('tedit');$('hud').classList.add('on','edit');$('tbar').style.display='block';
@@ -1076,7 +1086,7 @@ function syncLayout(m){ // 로그인 시: 계정에 저장된 배치를 이 기�
 }
 function closeEditor(){editing=false;teSelect(null);$('hud').classList.remove('edit');$('tbar').style.display='none';saveSet();pushLayout();setScreen('set')}
 for(const id of TB_IDS){
-  const el=$('tb-'+id);let drag=null;const cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const el=tbEl(id);let drag=null;const cl=(v,a,b)=>Math.max(a,Math.min(b,v));
   el.addEventListener('pointerdown',e=>{if(!editing||!SET.tb||!SET.tb[id])return;e.preventDefault();teSelect(id);drag={px:e.clientX,py:e.clientY,x:SET.tb[id].x,y:SET.tb[id].y};try{el.setPointerCapture(e.pointerId)}catch{}});
   el.addEventListener('pointermove',e=>{
     if(!editing||!drag)return;const c=SET.tb[id];

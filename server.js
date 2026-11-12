@@ -93,7 +93,7 @@ function topList() {
     .map(u => ({ name: u.name, level: levelOf(u.stats.xp), kills: u.stats.kills, deaths: u.stats.deaths, wins: u.stats.wins }));
 }
 // 터치 버튼 배치(계정에 저장): 알려진 버튼과 숫자 범위만 받아들임
-const TB_IDS = ['fire', 'jump', 'reload', 'swap', 'zoom', 'prone'];
+const TB_IDS = ['fire', 'jump', 'reload', 'swap', 'zoom', 'prone', 'joy'];
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 function cleanLayout(d) {
   if (!d || typeof d !== 'object') return null;
@@ -104,7 +104,7 @@ function cleanLayout(d) {
       const b = d.tb[id]; if (!b || typeof b !== 'object') continue;
       const x = +b.x, y = +b.y, sz = +b.s;
       if (![x, y, sz].every(Number.isFinite)) continue;
-      out.tb[id] = { x: +clampN(x, 0, 100).toFixed(2), y: +clampN(y, 0, 100).toFixed(2), s: clampN(Math.round(sz), 30, 200) };
+      out.tb[id] = { x: +clampN(x, 0, 100).toFixed(2), y: +clampN(y, 0, 100).toFixed(2), s: clampN(Math.round(sz), 30, 300) };
     }
   }
   const op = +d.tbOp;
