@@ -9,6 +9,9 @@ const MAX_PLAYERS = 8;
 const KILL_LIMIT = { ffa: 10, team: 0 }; // 개인전: 10킬 선취 / 팀전: 킬 제한 없음(시간제)
 const TEAM_TIME_MS = 3 * 60 * 1000; // 팀전 제한시간 3분 (개인전은 무제한)
 const RESPAWN_MS = 3000;
+const MAP_COUNT = 5;    // 맵 개수 (클라이언트의 MAPS와 같아야 함)
+const OUTRO_MS = 3000;  // 경기 종료 연출 시간 (1등은 이 동안 계속 움직일 수 있음)
+const mapIdx = v => { v = Math.floor(+v); return v >= 0 && v < MAP_COUNT ? v : 0; };
 const COUNTDOWN_MS = 3000;   // 시작 카운트다운
 const SPAWN_PROTECT_MS = 2000; // 부활 직후 무적
 const MEDKIT_CD_MS = 40000;   // 구급상자 쿨타임
@@ -120,7 +123,7 @@ const send = (c, m) => { if (c.ws.readyState === 1) c.ws.send(JSON.stringify(m))
 const inRoom = (room, m) => room.players.forEach(p => send(p, m));
 
 function roomInfo(r) {
-  return { id: r.id, name: r.name, mode: r.mode, count: r.players.size, max: MAX_PLAYERS, state: r.state };
+  return { id: r.id, name: r.name, mode: r.mode, map: r.map || 0, count: r.players.size, max: MAX_PLAYERS, state: r.state };
 }
 function broadcastRooms() {
   const list = [...rooms.values()].map(roomInfo);
@@ -128,7 +131,7 @@ function broadcastRooms() {
 }
 function roomPayload(r) {
   return {
-    t: 'room', id: r.id, name: r.name, mode: r.mode, state: r.state, host: r.host, max: MAX_PLAYERS,
+    t: 'room', id: r.id, name: r.name, mode: r.mode, map: r.map || 0, state: r.state, host: r.host, max: MAX_PLAYERS,
     players: [...r.players.values()].map(p => ({ id: p.id, nick: p.nick, level: statOf(p) ? levelOf(statOf(p).xp) : 0 }))
   };
 }
@@ -168,7 +171,7 @@ function startGame(r) {
   list.forEach(p => { Object.assign(p, { hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0 }); });
   r.players.forEach(p => {
     send(p, {
-      t: 'start', mode: r.mode, you: p.id, limit: KILL_LIMIT[r.mode], duration, countdown: COUNTDOWN_MS,
+      t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: KILL_LIMIT[r.mode], duration, countdown: COUNTDOWN_MS,
       players: [...r.players.values()].map(q => ({ id: q.id, nick: q.nick, team: q.team, x: q.sp.x, z: q.sp.z }))
     });
   });
@@ -194,8 +197,16 @@ function endGame(r, reason) {
     saveUsers();
   }
   ps.forEach(p => { if (statOf(p)) send(p, { t: 'stats', stats: publicStats(users[p.user]) }); });
+  // 1등: 개인전 = 최다 킬, 팀전 = 이긴 팀의 최다 킬 (무승부면 전체 최다 킬)
+  let winnerId = null;
+  if (!reason && ps.length) {
+    const sorted = [...ps].sort((a, b) => b.kills - a.kills);
+    const wt2 = r.mode === 'team' ? (r.teamKills[0] === r.teamKills[1] ? -1 : (r.teamKills[0] > r.teamKills[1] ? 0 : 1)) : -1;
+    winnerId = ((wt2 >= 0 ? sorted.filter(p => p.team === wt2)[0] : null) || sorted[0]).id;
+    r.outroUntil = Date.now() + OUTRO_MS;
+  }
   inRoom(r, {
-    t: 'end', winner, reason: reason || '',
+    t: 'end', winner, winnerId, reason: reason || '',
     scores: ps.map(p => ({ nick: p.nick, team: p.team, kills: p.kills, deaths: p.deaths })), teamKills: r.teamKills
   });
   r.players.forEach(p => { p.team = -1; });
@@ -260,7 +271,7 @@ wss.on('connection', ws => {
       case 'create': {
         if (r) break;
         const mode = m.mode === 'team' ? 'team' : 'ffa';
-        const room = { id: nextRoomId++, name: String(m.name || '').slice(0, 20) || (c.nick + '의 방'), mode, host: c.id, state: 'wait', players: new Map(), teamKills: [0, 0] };
+        const room = { id: nextRoomId++, name: String(m.name || '').slice(0, 20) || (c.nick + '의 방'), mode, map: mapIdx(m.map), host: c.id, state: 'wait', players: new Map(), teamKills: [0, 0] };
         rooms.set(room.id, room); room.players.set(c.id, c); c.room = room; sendRoom(room); break;
       }
       case 'join': {
@@ -272,12 +283,15 @@ wss.on('connection', ws => {
         room.players.set(c.id, c); c.room = room; sendRoom(room); break;
       }
       case 'leave': leaveRoom(c); send(c, { t: 'rooms', rooms: [...rooms.values()].map(roomInfo) }); break;
+      case 'setmap': // 방장이 대기실에서 맵 변경
+        if (!r || r.host !== c.id || r.state !== 'wait') break;
+        r.map = mapIdx(m.map); sendRoom(r); break;
       case 'start':
         if (!r || r.host !== c.id || r.state !== 'wait') break;
         if (r.players.size < 2) return send(c, { t: 'err', msg: '2명 이상이어야 시작할 수 있어요' });
         startGame(r); break;
       case 'state':
-        if (!r || r.state !== 'play' || !c.alive) break;
+        if (!r || !(r.state === 'play' ? c.alive : Date.now() < (r.outroUntil || 0))) break; // 종료 연출 중에도 위치는 계속 전달
         c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0 }; break;
       case 'medkit': { // 구급상자: 체력 50 회복, 쿨타임 40초, 개수 무제한
         if (!r || r.state !== 'play' || !c.alive || c.hp >= 100 || c.healing) break;
@@ -334,7 +348,7 @@ wss.on('connection', ws => {
 // 20Hz 위치 동기화
 setInterval(() => {
   rooms.forEach(r => {
-    if (r.state !== 'play') return;
+    if (r.state !== 'play' && Date.now() > (r.outroUntil || 0)) return;
     const s = {};
     const now = Date.now();
     r.players.forEach(p => {
