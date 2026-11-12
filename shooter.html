@@ -153,6 +153,9 @@
   #hud.over .h:not(#endmsg),#hud.over #mini,#hud.over .tb,#hud.over #cross,#hud.over #low,#hud.over #hit{display:none!important}
   #hud.over:not(.win) #joybase,#hud.over:not(.win) #tz{display:none!important}
   body.touch #endmsg{font-size:40px}body.touch #endmsg small{font-size:16px}
+  #tb-exit{display:none;position:fixed;left:50%;top:46px;transform:translateX(-50%);background:#0009;border:1px solid #fff5;border-radius:8px;padding:5px 12px;font-size:12px;color:#fff;z-index:6;font-weight:700}
+  body.touch #tb-exit{display:block}
+  #hud.over #tb-exit,#hud.edit #tb-exit{display:none!important}
   .t0{color:#ff7b7f}.t1{color:#7fb0ff}
 </style>
 </head>
@@ -231,6 +234,7 @@
 <div class="screen" id="s-rooms">
   <div class="card" style="width:460px">
     <h2 id="rtitle">개인전 방 목록</h2>
+    <button class="pri" id="b-practice" style="display:none;width:100%;margin-bottom:10px">🎯 훈련장 — 봇 1명과 연습 (끝나지 않음)</button>
     <div id="roomlist"></div>
     <div style="margin-bottom:10px"><input id="rname" maxlength="20" placeholder="방 이름 (비우면 자동)" style="width:200px"> <select id="rmap" title="맵"></select></div>
     <div class="row">
@@ -290,8 +294,9 @@
   <div id="tz"></div><div id="joybase"><div id="joyknob"></div></div>
   <div class="tb" id="tb-fire">발사</div><div class="tb" id="tb-jump">점프</div><div class="tb" id="tb-reload">재장전</div>
   <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div>
+  <div id="tb-exit">✕ 나가기</div>
   <div id="rot">화면을 가로로 돌려 주세요 📱</div>
-  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · C 구급상자<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div></div>
+  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · C 구급상자<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div><button class="sm" id="b-quit" style="margin-top:14px">게임 나가기</button></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -426,8 +431,15 @@ $('b-setback').onclick=()=>setScreen('menu');
 
 $('b-ffa').onclick=()=>openRooms('ffa');
 $('b-team').onclick=()=>openRooms('team');
-function openRooms(m){mode=m;$('rtitle').textContent=(m==='ffa'?'개인전':'팀전')+' 방 목록';setScreen('rooms');renderRooms([]);send({t:'lobby',nick:myNick(),loadout:LOADOUT})}
+function openRooms(m){mode=m;$('b-practice').style.display=m==='ffa'?'':'none';$('rtitle').textContent=(m==='ffa'?'개인전':'팀전')+' 방 목록';setScreen('rooms');renderRooms([]);send({t:'lobby',nick:myNick(),loadout:LOADOUT})}
 $('b-rback').onclick=()=>setScreen('menu');
+$('b-practice').onclick=()=>send({t:'practice',map:+$('rmap').value,nick:myNick(),loadout:LOADOUT}); // 아래에서 고른 맵으로 바로 시작
+function quitGame(){ // 진행 중인 게임에서 나가기
+  if(!G)return;send({t:'leave'});endLocalGame();room=null;setScreen('rooms');renderRooms([]);
+}
+$('b-quit').onclick=e=>{e.stopPropagation();quitGame()};
+{let armed=0;const ex=$('tb-exit'); // 터치: 실수로 누르지 않게 두 번 눌러야 나감
+ ex.onclick=()=>{if(performance.now()<armed){armed=0;ex.textContent='✕ 나가기';quitGame()}else{armed=performance.now()+2200;ex.textContent='한 번 더 누르면 나가요';setTimeout(()=>{if(performance.now()>=armed)ex.textContent='✕ 나가기'},2300)}};}
 $('b-create').onclick=()=>{send({t:'create',mode,nick:myNick(),loadout:LOADOUT,map:+$('rmap').value,name:$('rname').value.trim()});$('rname').value=''};
 function renderRooms(list){
   const box=$('roomlist');box.innerHTML='';
@@ -923,7 +935,7 @@ function gunSound(snd,vol){
 function stepSound(){beep(55+Math.random()*25,0.05,'sine',0.04)}
 function killMsg(hs){
   const n=G.streak,el=$('kmsg');
-  el.innerHTML='💀 '+(['','처치!','더블 킬!','트리플 킬!','쿼드라 킬!'][n]||'학살 중! ×'+n)+'<small>'+(hs?'🎯 헤드샷 ':'')+(ME&&!ME.guest?'+'+(hs?125:100)+' XP':'')+'</small>';
+  el.innerHTML='💀 '+(['','처치!','더블 킬!','트리플 킬!','쿼드라 킬!'][n]||'학살 중! ×'+n)+'<small>'+(hs?'🎯 헤드샷 ':'')+(ME&&!ME.guest&&!G.practice?'+'+(hs?125:100)+' XP':'')+'</small>';
   el.className='h';void el.offsetWidth;el.className='h show';
 }
 
@@ -961,6 +973,47 @@ function deathFx(v,m){ // 맞은 방향으로 밀려나며 쓰러지고, 헤드�
   }
 }
 
+// ---- 훈련장 봇: 돌아다니다가 내가 보이면 멈칫하고 쏜다. 장애물 뒤에 숨으면 못 쏜다 ----
+const botRay=new THREE.Raycaster(),clampV=(v,a,b)=>Math.max(a,Math.min(b,v));
+function botAI(dt){
+  const b=G.players[G.botId];if(!b)return;
+  const ai=G.ai||(G.ai={wx:b.tx,wz:b.tz,wt:0,see:0,cool:1.2,re:false});
+  if(!b.alive){ai.see=0;ai.re=true;return}
+  if(ai.re){ai.re=false;ai.wx=b.tx;ai.wz=b.tz;ai.wt=0} // 부활 직후: 새 위치에서 다시 시작
+  if(performance.now()<G.startAt)return;
+  const dx=P.x-b.tx,dz=P.z-b.tz,dist=Math.hypot(dx,dz);let see=false;
+  if(P.alive&&dist<70){ // 시야: 봇 머리 → 내 가슴 사이에 장애물이 없어야 함
+    const from=new THREE.Vector3(b.tx,1.6,b.tz),dir=new THREE.Vector3(P.x,P.y-0.4-(P.prone?0.9:0),P.z).sub(from),L=dir.length();
+    botRay.set(from,dir.normalize());botRay.far=L;see=botRay.intersectObjects(solids,false).length===0;
+  }
+  // 이동: 목표 지점으로 걷다가 도착하거나 막히면 새 목표 (안 보이면 내 쪽으로 다가옴)
+  ai.wt-=dt;const tx=ai.wx-b.tx,tz=ai.wz-b.tz,td=Math.hypot(tx,tz);
+  if(ai.wt<=0||td<1){
+    const a=Math.random()*6.283,r=6+Math.random()*16,cx=see||!P.alive?b.tx:P.x,cz=see||!P.alive?b.tz:P.z;
+    ai.wx=clampV(cx+Math.cos(a)*r,-45,45);ai.wz=clampV(cz+Math.sin(a)*r,-45,45);ai.wt=2.5+Math.random()*3;
+  }else{
+    const sp=(see?2.2:4)*dt;let nx=b.tx+tx/td*sp,nz=b.tz+tz/td*sp;const ox=nx,oz=nz;
+    for(const bx of boxes){ // 벽에 막히면 밀려남 (낮은 턱은 무시)
+      if(bx.maxy<=0.6||bx.miny>=1.8)continue;const x0=bx.minx-0.45,x1=bx.maxx+0.45,z0=bx.minz-0.45,z1=bx.maxz+0.45;
+      if(nx>x0&&nx<x1&&nz>z0&&nz<z1){const dl=nx-x0,dr=x1-nx,df=nz-z0,db=z1-nz,mn=Math.min(dl,dr,df,db);if(mn===dl)nx=x0;else if(mn===dr)nx=x1;else if(mn===df)nz=z0;else nz=z1}
+    }
+    nx=clampV(nx,-48,48);nz=clampV(nz,-48,48);
+    if(Math.hypot(nx-ox,nz-oz)>sp*0.6)ai.wt=Math.min(ai.wt,0.3);
+    b.tx=nx;b.tz=nz;
+  }
+  b.ty=0;
+  if(see){ // 조준 후 0.6초 뒤부터 사격. 멀수록, 내가 움직이거나 엎드릴수록 빗나감
+    b.tyaw=Math.atan2(dx,dz);ai.see+=dt;ai.cool-=dt;
+    if(ai.see>0.6&&ai.cool<=0){
+      ai.cool=0.5+Math.random()*0.5;
+      const hit=Math.random()<clampV(0.62-dist/110-(P.mv||0)*0.14-(P.prone?0.12:0)-(P.onGround?0:0.1),0.12,0.7);
+      const from=new THREE.Vector3(b.g.position.x,1.4,b.g.position.z),to=new THREE.Vector3(P.x+(hit?0:rnd(-1.2,1.2)),P.y-0.5+(hit?0:rnd(-0.6,0.9)),P.z+(hit?0:rnd(-1.2,1.2)));
+      addTracer(from,to);gunSound(130,Math.max(0.1,1-dist/80)*0.7);b.firedAt=performance.now();
+      if(hit)send({t:'bothit'});
+    }
+  }else{ai.see=0;if(td>0.1)b.tyaw=Math.atan2(tx,tz)}
+}
+
 function makePlayer(p){
   const col=p.team>=0?TCOL[p.team]:new THREE.Color().setHSL((p.id*0.37)%1,0.65,0.5).getHex();
   const g=new THREE.Group();
@@ -985,6 +1038,7 @@ function beginGame(m){
   endLocalGame();
   loadMap(m.map||0); // 방에서 고른 맵
   G={mode:m.mode,limit:m.limit,startAt:performance.now()+(m.countdown||0),endsAt:m.duration?performance.now()+m.duration+(m.countdown||0):0,players:{},teamKills:[0,0],feed:[],streak:0};
+  G.practice=!!m.practice;G.botId=m.bot||0;G.ai=null;
   for(const p of m.players)if(p.id!==myId)G.players[p.id]=makePlayer(p);
   const me=m.players.find(p=>p.id===myId);
   medReadyAt=0;medBusyUntil=0;
@@ -992,7 +1046,7 @@ function beginGame(m){
   respawnLocal(me.x,me.z);
   setScreen('game');
   const b=$('banner');
-  b.innerHTML=m.mode==='team'?'당신은 <span class="t'+me.team+'">'+TEAM[me.team]+' 팀</span>입니다':'개인전 시작! '+m.limit+'킬을 먼저 달성하세요';
+  b.innerHTML=m.mode==='team'?'당신은 <span class="t'+me.team+'">'+TEAM[me.team]+' 팀</span>입니다':(m.practice?'🎯 훈련장 · 봇과 연습 (끝나지 않아요)':'개인전 시작! '+m.limit+'킬을 먼저 달성하세요');
   b.style.opacity=1;setTimeout(()=>b.style.opacity=0,3500);
   renderSB();renderTop();hud();
 }
@@ -1117,13 +1171,13 @@ function switchTo(i){
 function renderSB(){
   if(!G)return;
   const top=Math.max(0,...Object.values(G.players).map(p=>p.kills));
-  $('sb').innerHTML='<div style="color:#ffe27a">내 킬 '+G.me.kills+' · 데스 '+G.me.deaths+'</div>'+(G.mode==='ffa'?'<div>상대 최다 킬 '+top+'</div>':'');
+  $('sb').innerHTML='<div style="color:#ffe27a">내 킬 '+G.me.kills+' · 데스 '+G.me.deaths+'</div>'+(G.mode==='ffa'?'<div>'+(G.practice?'봇 킬 ':'상대 최다 킬 ')+top+'</div>':'');
 }
 function renderTop(){
   if(!G)return;
   const t=G.endsAt?Math.max(0,Math.ceil((G.endsAt-performance.now())/1000)):0;
   const tm=G.endsAt?' <small>⏱ '+Math.floor(t/60)+':'+String(t%60).padStart(2,'0')+'</small>':'';
-  $('top').innerHTML=G.mode==='team'?'<span class="t0">레드 '+G.teamKills[0]+'</span> : <span class="t1">'+G.teamKills[1]+' 블루</span>'+tm:'목표 '+G.limit+'킬 <small>(시간 제한 없음)</small>';
+  $('top').innerHTML=G.mode==='team'?'<span class="t0">레드 '+G.teamKills[0]+'</span> : <span class="t1">'+G.teamKills[1]+' 블루</span>'+tm:(G.practice?'🎯 훈련장 <small>(킬 제한 없음 · 나가려면 '+(freeMode?'✕ 나가기':'Esc')+')</small>':'목표 '+G.limit+'킬 <small>(시간 제한 없음)</small>');
 }
 function hitMarker(hs,kill){
   const el=$('hit');el.className='';void el.offsetWidth;el.className='pop'+(kill?' kill':hs?' hs':'');
@@ -1276,6 +1330,7 @@ function loop(){
     pollPad(dt);
     if(P.alive&&playing())update(dt);
     updateDirs(dt);
+    if(G.practice)botAI(dt);
     // 다른 플레이어 보간
     for(const id in G.players){
       const p=G.players[id];

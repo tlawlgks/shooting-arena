@@ -10,6 +10,7 @@ const KILL_LIMIT = { ffa: 10, team: 0 }; // 개인전: 10킬 선취 / 팀전: �
 const TEAM_TIME_MS = 3 * 60 * 1000; // 팀전 제한시간 3분 (개인전은 무제한)
 const RESPAWN_MS = 3000;
 const MAP_COUNT = 5;    // 맵 개수 (클라이언트의 MAPS와 같아야 함)
+const BOT_WEAPON = 6;    // 훈련장 봇의 총 (M4A1)
 const OUTRO_MS = 3000;  // 경기 종료 연출 시간 (1등은 이 동안 계속 움직일 수 있음)
 const mapIdx = v => { v = Math.floor(+v); return v >= 0 && v < MAP_COUNT ? v : 0; };
 const COUNTDOWN_MS = 3000;   // 시작 카운트다운
@@ -125,8 +126,9 @@ const inRoom = (room, m) => room.players.forEach(p => send(p, m));
 function roomInfo(r) {
   return { id: r.id, name: r.name, mode: r.mode, map: r.map || 0, count: r.players.size, max: MAX_PLAYERS, state: r.state };
 }
+const listRooms = () => [...rooms.values()].filter(r => !r.practice).map(roomInfo); // 훈련장은 목록에 나오지 않음
 function broadcastRooms() {
-  const list = [...rooms.values()].map(roomInfo);
+  const list = listRooms();
   clients.forEach(c => { if (!c.room) send(c, { t: 'rooms', rooms: list }); });
 }
 function roomPayload(r) {
@@ -145,6 +147,7 @@ function spawnPoint() {
 function leaveRoom(c) {
   const r = c.room; if (!r) return;
   r.players.delete(c.id); c.room = null;
+  if (r.practice) { rooms.delete(r.id); return; } // 훈련장은 나가면 바로 사라짐
   if (r.players.size === 0) { clearTimeout(r.timer); rooms.delete(r.id); }
   else {
     if (r.host === c.id) r.host = r.players.keys().next().value;
@@ -213,6 +216,29 @@ function endGame(r, reason) {
   setTimeout(() => { if (rooms.has(r.id)) sendRoom(r); }, 100);
 }
 
+// 피해 적용: 체력 감소 → (사망 시) 킬 처리, 전적, 종료 판정, 부활 예약
+function damage(r, c, v, dmg, hs) {
+  v.hp -= dmg; v.lastHurt = Date.now();
+  send(c, { t: 'hitconfirm', hs: !!hs, dmg });
+  if (v.hp > 0) return inRoom(r, { t: 'hp', id: v.id, hp: v.hp, by: c.id });
+  v.hp = 0; v.alive = false; v.deaths++; c.kills++; v.healing = null; v.healUntil = 0;
+  if (!r.practice) { // 훈련장은 전적에 반영하지 않음
+    const ks = statOf(c), vs = statOf(v);
+    if (ks) { ks.kills++; ks.xp += 100; if (hs) { ks.hs++; ks.xp += 25; } }
+    if (vs) vs.deaths++;
+    if (ks || vs) saveUsers();
+  }
+  if (r.mode === 'team') r.teamKills[c.team]++;
+  inRoom(r, { t: 'kill', killer: c.id, victim: v.id, hs: !!hs, kills: c.kills, deaths: v.deaths, teamKills: r.teamKills });
+  const limit = r.practice ? 0 : KILL_LIMIT[r.mode]; // 훈련장은 킬 제한 없음 (끝나지 않음)
+  if (limit > 0 && (r.mode === 'team' ? Math.max(...r.teamKills) >= limit : c.kills >= limit)) return endGame(r);
+  setTimeout(() => {
+    if (r.state !== 'play' || !r.players.has(v.id)) return;
+    v.hp = 100; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS;
+    inRoom(r, { t: 'respawn', id: v.id, x: v.sp.x, z: v.sp.z, prot: SPAWN_PROTECT_MS });
+  }, RESPAWN_MS);
+}
+
 wss.on('connection', ws => {
   const c = { ws, id: nextId++, nick: '게스트' + Math.floor(Math.random() * 1000), room: null, user: null, guest: false, tries: 0 };
   clients.set(c.id, c);
@@ -228,7 +254,7 @@ wss.on('connection', ws => {
     const r = c.room;
     const authErr = msg => send(c, { t: 'autherr', msg });
     const authOk = (key, token) => { c.user = key; c.guest = false; c.nick = users[key].name; send(c, { t: 'authed', user: users[key].name, token, stats: publicStats(users[key]), layout: users[key].layout || null }); };
-    if (!c.user && !c.guest && (m.t === 'create' || m.t === 'join' || m.t === 'start')) return send(c, { t: 'err', msg: '먼저 로그인하거나 게스트로 입장하세요' });
+    if (!c.user && !c.guest && (m.t === 'create' || m.t === 'join' || m.t === 'start' || m.t === 'practice')) return send(c, { t: 'err', msg: '먼저 로그인하거나 게스트로 입장하세요' });
     switch (m.t) {
       case 'register': case 'login': {
         if (r) break;
@@ -267,7 +293,7 @@ wss.on('connection', ws => {
         if (lay) users[c.user].layout = lay; else delete users[c.user].layout;
         saveUsers(); break;
       }
-      case 'lobby': send(c, { t: 'rooms', rooms: [...rooms.values()].map(roomInfo) }); break;
+      case 'lobby': send(c, { t: 'rooms', rooms: listRooms() }); break;
       case 'create': {
         if (r) break;
         const mode = m.mode === 'team' ? 'team' : 'ffa';
@@ -282,7 +308,24 @@ wss.on('connection', ws => {
         if (room.players.size >= MAX_PLAYERS) return send(c, { t: 'err', msg: '방이 가득 찼어요' });
         room.players.set(c.id, c); c.room = room; sendRoom(room); break;
       }
-      case 'leave': leaveRoom(c); send(c, { t: 'rooms', rooms: [...rooms.values()].map(roomInfo) }); break;
+      case 'leave': leaveRoom(c); send(c, { t: 'rooms', rooms: listRooms() }); break;
+      case 'practice': { // 훈련장: 봇 1명과 끝나지 않는 연습 (전적 미반영, 방 목록에 안 나옴)
+        if (r) break;
+        const bot = { ws: { readyState: 0 }, id: nextId++, nick: '훈련 봇', bot: true, room: null, user: null, guest: true, loadout: [BOT_WEAPON] };
+        const room = { id: nextRoomId++, name: '훈련장', mode: 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
+        rooms.set(room.id, room); room.players.set(c.id, c); room.players.set(bot.id, bot); c.room = room;
+        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0 }));
+        send(c, { t: 'start', mode: 'ffa', practice: true, bot: bot.id, map: room.map, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
+          players: [c, bot].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z })) });
+        break;
+      }
+      case 'bothit': { // 훈련장 봇이 나를 맞힘 (봇의 움직임·시야·명중 판정은 클라이언트가 계산)
+        if (!r || !r.practice || !c.alive) break;
+        const bot = r.bot, w = WEAPONS[BOT_WEAPON], now = Date.now();
+        if (!bot.alive || now < r.startAt || now < (c.prot || 0)) break;
+        if (now - (bot.lastShot || 0) < w.cd * 600 + 250) break;
+        bot.lastShot = now; damage(r, bot, c, w.dmg, false); break;
+      }
       case 'setmap': // 방장이 대기실에서 맵 변경
         if (!r || r.host !== c.id || r.state !== 'wait') break;
         r.map = mapIdx(m.map); sendRoom(r); break;
@@ -320,24 +363,7 @@ wss.on('connection', ws => {
         if (now - (c.lastHit[key] || 0) < w.cd * 600) break; // 발사 간격 검사
         c.lastHit[key] = now;
         m.hs = nh > 0;
-        v.hp -= w.dmg * (nb + 2 * nh); v.lastHurt = now;
-        send(c, { t: 'hitconfirm', hs: !!m.hs, dmg: w.dmg * (nb + 2 * nh) });
-        if (v.hp > 0) { inRoom(r, { t: 'hp', id: v.id, hp: v.hp, by: c.id }); break; }
-        v.hp = 0; v.alive = false; v.deaths++; c.kills++; v.healing = null; v.healUntil = 0;
-        { const ks = statOf(c), vs = statOf(v);
-          if (ks) { ks.kills++; ks.xp += 100; if (m.hs) { ks.hs++; ks.xp += 25; } }
-          if (vs) vs.deaths++;
-          if (ks || vs) saveUsers(); }
-        if (r.mode === 'team') r.teamKills[c.team]++;
-        inRoom(r, { t: 'kill', killer: c.id, victim: v.id, hs: !!m.hs, kills: c.kills, deaths: v.deaths, teamKills: r.teamKills });
-        const limit = KILL_LIMIT[r.mode];
-        const reached = limit > 0 && (r.mode === 'team' ? Math.max(...r.teamKills) >= limit : c.kills >= limit);
-        if (reached) { endGame(r); break; }
-        setTimeout(() => {
-          if (r.state !== 'play' || !r.players.has(v.id)) return;
-          v.hp = 100; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS;
-          inRoom(r, { t: 'respawn', id: v.id, x: v.sp.x, z: v.sp.z, prot: SPAWN_PROTECT_MS });
-        }, RESPAWN_MS);
+        damage(r, c, v, w.dmg * (nb + 2 * nh), nh > 0);
         break;
       }
     }
