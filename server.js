@@ -92,6 +92,25 @@ function topList() {
   return Object.values(users).sort((a, b) => b.stats.kills - a.stats.kills).slice(0, 10)
     .map(u => ({ name: u.name, level: levelOf(u.stats.xp), kills: u.stats.kills, deaths: u.stats.deaths, wins: u.stats.wins }));
 }
+// 터치 버튼 배치(계정에 저장): 알려진 버튼과 숫자 범위만 받아들임
+const TB_IDS = ['fire', 'jump', 'reload', 'swap', 'zoom', 'prone'];
+const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+function cleanLayout(d) {
+  if (!d || typeof d !== 'object') return null;
+  const out = {};
+  if (d.tb && typeof d.tb === 'object') {
+    out.tb = {};
+    for (const id of TB_IDS) {
+      const b = d.tb[id]; if (!b || typeof b !== 'object') continue;
+      const x = +b.x, y = +b.y, sz = +b.s;
+      if (![x, y, sz].every(Number.isFinite)) continue;
+      out.tb[id] = { x: +clampN(x, 0, 100).toFixed(2), y: +clampN(y, 0, 100).toFixed(2), s: clampN(Math.round(sz), 30, 200) };
+    }
+  }
+  const op = +d.tbOp;
+  if (d.tbOp != null && Number.isFinite(op)) out.tbOp = clampN(op, 0.2, 1);
+  return out;
+}
 const statOf = c => (c.user && users[c.user]) ? users[c.user].stats : null;
 
 const send = (c, m) => { if (c.ws.readyState === 1) c.ws.send(JSON.stringify(m)); };
@@ -194,7 +213,7 @@ wss.on('connection', ws => {
     }
     const r = c.room;
     const authErr = msg => send(c, { t: 'autherr', msg });
-    const authOk = (key, token) => { c.user = key; c.guest = false; c.nick = users[key].name; send(c, { t: 'authed', user: users[key].name, token, stats: publicStats(users[key]) }); };
+    const authOk = (key, token) => { c.user = key; c.guest = false; c.nick = users[key].name; send(c, { t: 'authed', user: users[key].name, token, stats: publicStats(users[key]), layout: users[key].layout || null }); };
     if (!c.user && !c.guest && (m.t === 'create' || m.t === 'join' || m.t === 'start')) return send(c, { t: 'err', msg: '먼저 로그인하거나 게스트로 입장하세요' });
     switch (m.t) {
       case 'register': case 'login': {
@@ -228,6 +247,12 @@ wss.on('connection', ws => {
         if (c.user && users[c.user] && m.token) { users[c.user].tokens = (users[c.user].tokens || []).filter(t => t !== m.token); tokens.delete(m.token); saveUsers(); }
         c.user = null; c.guest = false; send(c, { t: 'loggedout' }); break;
       case 'top': send(c, { t: 'top', list: topList() }); break;
+      case 'layout': { // 터치 버튼 배치를 계정에 저장 (로그인 유저만)
+        if (!c.user || !users[c.user]) break;
+        const lay = cleanLayout(m.data);
+        if (lay) users[c.user].layout = lay; else delete users[c.user].layout;
+        saveUsers(); break;
+      }
       case 'lobby': send(c, { t: 'rooms', rooms: [...rooms.values()].map(roomInfo) }); break;
       case 'create': {
         if (r) break;

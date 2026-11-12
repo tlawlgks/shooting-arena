@@ -238,7 +238,7 @@
 
 <!-- 터치 버튼 배치 편집 도구 -->
 <div id="tbar">
-  <div><b>터치 버튼 배치</b><br><small style="color:#9fb0cc">버튼을 끌어서 옮기세요 · 누른 버튼의 크기를 아래에서 조절 · 가로 화면 권장</small></div>
+  <div><b>터치 버튼 배치</b><br><small style="color:#9fb0cc">버튼을 끌어서 옮기세요 · 누른 버튼의 크기를 아래에서 조절 · 가로 화면 권장<br>로그인하면 계정에 저장되어 다른 기기에서도 그대로 적용돼요</small></div>
   <div class="setrow">크기 <span id="te-name" style="color:#ffd24a"></span><input type="range" id="te-size" min="36" max="160" step="2"><b id="te-sv"></b></div>
   <div class="setrow">투명도 <input type="range" id="te-op" min="0.2" max="1" step="0.05"><b id="te-ov"></b></div>
   <div class="row"><button class="sm" id="te-reset">초기화</button><button class="sm pri" id="te-done">완료</button></div>
@@ -319,7 +319,7 @@ function onMsg(m){
   switch(m.t){
     case 'hello':myId=m.id;break;
     case 'err':showErr(m.msg);break;
-    case 'authed':ME={user:m.user,guest:!!m.guest,stats:m.stats||null};if(m.token){try{localStorage.setItem('token',m.token)}catch{}}$('lp').value='';$('lmsg').textContent='';renderProfile();if(screen==='login')setScreen('menu');break;
+    case 'authed':ME={user:m.user,guest:!!m.guest,stats:m.stats||null};if(m.token){try{localStorage.setItem('token',m.token)}catch{}}$('lp').value='';$('lmsg').textContent='';renderProfile();syncLayout(m);if(screen==='login')setScreen('menu');break;
     case 'autherr':if(m.expired){try{localStorage.removeItem('token')}catch{}}else $('lmsg').textContent=m.msg;break;
     case 'loggedout':ME=null;setScreen('login');break;
     case 'stats':if(ME&&!ME.guest){ME.stats=m.stats;renderProfile()}break;
@@ -1065,7 +1065,16 @@ function openEditor(){
   editing=true;setScreen('tedit');$('hud').classList.add('on','edit');$('tbar').style.display='block';
   setTimeout(()=>{if(!editing)return;materialize();teSelect('fire');$('te-op').value=SET.tbOp||1;$('te-ov').textContent=Math.round((SET.tbOp||1)*100)+'%'},60);
 }
-function closeEditor(){editing=false;teSelect(null);$('hud').classList.remove('edit');$('tbar').style.display='none';saveSet();setScreen('set')}
+function pushLayout(){if(ME&&!ME.guest)send({t:'layout',data:{tb:SET.tb||null,tbOp:SET.tbOp==null?null:SET.tbOp}})} // 계정에 저장
+function syncLayout(m){ // 로그인 시: 계정에 저장된 배치를 이 기기에 적용. 계정에 없으면 이 기기의 배치를 계정에 올림
+  if(m.guest)return;
+  if(m.layout){
+    if(m.layout.tb&&Object.keys(m.layout.tb).length)SET.tb=m.layout.tb;else delete SET.tb;
+    if(m.layout.tbOp!=null)SET.tbOp=m.layout.tbOp;else delete SET.tbOp;
+    saveSet();applyTouchLayout();
+  }else if(SET.tb||SET.tbOp!=null)pushLayout();
+}
+function closeEditor(){editing=false;teSelect(null);$('hud').classList.remove('edit');$('tbar').style.display='none';saveSet();pushLayout();setScreen('set')}
 for(const id of TB_IDS){
   const el=$('tb-'+id);let drag=null;const cl=(v,a,b)=>Math.max(a,Math.min(b,v));
   el.addEventListener('pointerdown',e=>{if(!editing||!SET.tb||!SET.tb[id])return;e.preventDefault();teSelect(id);drag={px:e.clientX,py:e.clientY,x:SET.tb[id].x,y:SET.tb[id].y};try{el.setPointerCapture(e.pointerId)}catch{}});
