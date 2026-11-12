@@ -136,6 +136,7 @@
   #tbar .setrow{margin:6px 0}
   #med{left:20px;bottom:64px;font-size:15px}
   #med.cd{opacity:.6}
+  #healing{left:50%;top:66%;transform:translateX(-50%);font-size:20px;color:#7dffb0;white-space:nowrap}
   body.touch #med{left:50%;transform:translateX(-50%);bottom:108px;font-size:12px}
   #tb-med{right:212px;bottom:112px;width:56px;height:56px;font-size:12px;background:#2ecc7155}
   #healfx{position:fixed;inset:0;background:radial-gradient(transparent 50%,#2ecc71aa);opacity:0;pointer-events:none;transition:opacity .5s}
@@ -269,7 +270,7 @@
   <div class="h" id="kmsg"></div><div class="h" id="count"></div>
   <canvas id="mini" width="150" height="150"></canvas>
   <div class="h" id="dead"></div>
-  <div class="h" id="med"></div><div id="healfx"></div>
+  <div class="h" id="med"></div><div class="h" id="healing"></div><div id="healfx"></div>
   <div id="tz"></div><div id="joybase"><div id="joyknob"></div></div>
   <div class="tb" id="tb-fire">발사</div><div class="tb" id="tb-jump">점프</div><div class="tb" id="tb-reload">재장전</div>
   <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div>
@@ -361,7 +362,7 @@ function onMsg(m){
     case 'med': // 구급상자 사용 성공
       medReadyAt=performance.now()+m.cd;beep(520,0.12,'sine',0.08);setTimeout(()=>beep(780,0.16,'sine',0.08),110);
       {const f=$('healfx');f.style.opacity=1;setTimeout(()=>f.style.opacity=0,350)}
-      {const b=$('banner');b.textContent='🩹 체력 +'+m.heal;b.style.opacity=1;setTimeout(()=>b.style.opacity=0,1200)}
+      medBusyUntil=performance.now()+(m.dur||0);touchZoom=false; // 치료 중에는 다른 행동 불가
       break;
     case 'end':onEnd(m);break;
   }
@@ -596,7 +597,7 @@ const P={x:0,z:0,y:1.7,vy:0,yaw:0,pitch:0,hp:100,reload:0,cool:0,alive:false,onG
 const CW=()=>WEAPONS[P.w[P.cur].id];
 let touchFire=false,rightDown=false,padZoom=false,touchZoom=false,freeMode=false,padMode=false,vSprint=false,padSprint=false,padJump=false;
 const joy={x:0,y:0},padJoy={x:0,y:0};
-const zoomed=()=>(rightDown||padZoom||touchZoom)&&P.alive&&P.w.length;
+const zoomed=()=>(rightDown||padZoom||touchZoom)&&P.alive&&P.w.length&&!medBusy();
 const AZ=()=>{const z=CW().zoom;return z>1?z:1.3}; // 조준 배율 (스코프 총은 고유 배율)
 const keys={};let sendT=0,respawnAt=0,camY=1.7;
 const TEAM=['레드','블루'],TCOL=[0xd9343a,0x2f6fe0];
@@ -655,7 +656,7 @@ function beginGame(m){
   G={mode:m.mode,limit:m.limit,startAt:performance.now()+(m.countdown||0),endsAt:m.duration?performance.now()+m.duration+(m.countdown||0):0,players:{},teamKills:[0,0],feed:[],streak:0};
   for(const p of m.players)if(p.id!==myId)G.players[p.id]=makePlayer(p);
   const me=m.players.find(p=>p.id===myId);
-  medReadyAt=0;
+  medReadyAt=0;medBusyUntil=0;
   G.me={id:myId,nick:myNick(),team:me.team,kills:0,deaths:0};
   respawnLocal(me.x,me.z);
   setScreen('game');
@@ -720,7 +721,7 @@ function onKill(m){
   d.innerHTML='<span'+c(k.team)+'>'+lab(k,m.killer)+'</span> ➜ <span'+c(v.team)+'>'+lab(v,m.victim)+'</span>'+(m.hs?' 🎯':'');
   f.prepend(d);setTimeout(()=>d.remove(),5000);
   if(m.victim===myId){
-    P.alive=false;P.hp=0;G.streak=0;respawnAt=performance.now()+3000;hud();
+    P.alive=false;P.hp=0;G.streak=0;medBusyUntil=0;respawnAt=performance.now()+3000;hud();
     $('dead').style.display='block';
   }else{v.alive=false;v.deadT=0} // 쓰러지는 연출 후 사라짐
   renderSB();renderTop();
@@ -764,7 +765,7 @@ function applyGunModel(){
   if(W.type==='석궁')bx(0.5,0.02,0.03,0,0.02,-L*0.45,wood);            // 석궁 활대
 }
 function switchTo(i){
-  if(!G||!P.alive||i===P.cur||!P.w[i])return;
+  if(!G||!P.alive||i===P.cur||!P.w[i]||medBusy())return;
   P.cur=i;P.reload=0;touchZoom=false;applyGunModel();gun.position.z=-0.3;beep(300,0.05,'triangle',0.04);hud();
 }
 function renderSB(){
@@ -782,7 +783,8 @@ function hitMarker(hs,kill){
   const el=$('hit');el.className='';void el.offsetWidth;el.className='pop'+(kill?' kill':hs?' hs':'');
   if(kill)beep(1300,0.18,'triangle',0.1);else beep(hs?1000:550,hs?0.12:0.07,'triangle',hs?0.1:0.07);
 }
-let lastKillAt=0,medReadyAt=0;
+let lastKillAt=0,medReadyAt=0,medBusyUntil=0;
+const medBusy=()=>performance.now()<medBusyUntil; // 구급상자 사용 중(5초): 사격·재장전·총 교체·조준 불가, 이동·점프·엎드리기는 가능
 function useMed(){ // 구급상자: 체력 50 회복, 쿨타임 40초 (서버가 최종 판정)
   if(!G||!P.alive||performance.now()<G.startAt||performance.now()<medReadyAt)return;
   if(P.hp>=100){const b=$('banner');b.textContent='체력이 이미 가득 찼어요';b.style.opacity=1;setTimeout(()=>b.style.opacity=0,900);return}
@@ -874,7 +876,7 @@ addEventListener('mousemove',e=>{
   P.yaw-=e.movementX*k;P.pitch=Math.max(-1.5,Math.min(1.5,P.pitch-e.movementY*k));
 });
 function reload(){
-  if(!P.w.length)return;const s=P.w[P.cur],W=CW();
+  if(!P.w.length||medBusy())return;const s=P.w[P.cur],W=CW();
   if(P.reload<=0&&s.ammo<W.mag&&P.alive){P.reload=W.reload;beep(200,0.2,'sawtooth');hud()}
 }
 
@@ -885,7 +887,7 @@ function addTracer(a,b){
   scene.add(l);tracers.push({l,t:0.06});
 }
 function shoot(){
-  if(!G||!P.alive||P.reload>0||P.cool>0||!P.w.length||performance.now()<G.startAt)return;
+  if(!G||!P.alive||P.reload>0||P.cool>0||!P.w.length||performance.now()<G.startAt||medBusy())return;
   const W=CW(),slot=P.w[P.cur];
   if(slot.ammo<=0){reload();return}
   slot.ammo--;P.cool=W.cd;flashT=0.05;gunSound(W.snd,1);gun.position.z=-0.4+Math.min(0.14,W.recoil*1.6);
@@ -948,6 +950,7 @@ function loop(){
       const left=Math.ceil((medReadyAt-performance.now())/1000),m=$('med');
       m.textContent=left>0?'🩹 구급상자 '+left+'초':'🩹 구급상자 준비됨 [C]';m.classList.toggle('cd',left>0);
       $('tb-med').textContent=left>0?left:'구급';
+      const hb=Math.ceil((medBusyUntil-performance.now())/1000);$('healing').textContent=(hb>0&&P.alive)?'🩹 치료 중... '+hb+'초 (사격 불가)':'';
     }
     {const cd=G.startAt-performance.now();$('count').textContent=cd>0?Math.ceil(cd/1000):(cd>-800?'시작!':'')} // 시작 카운트다운
     { // 움직임/반동에 따라 벌어지는 조준점
@@ -968,7 +971,7 @@ function loop(){
   }
   gun.position.z+=(-0.5-gun.position.z)*Math.min(1,dt*20);
   {const ads=zoomed()&&P.w.length&&CW().zoom<2.5; // 스코프가 아닌 총은 조준 시 화면 중앙으로
-   const mv=(P.alive&&P.onGround&&P.mv)?P.mv:0,rl=P.reload>0?1:0;bobT+=dt*(6+mv*5); // 걸을 때 흔들림, 재장전 시 총을 내림
+   const mv=(P.alive&&P.onGround&&P.mv)?P.mv:0,rl=(P.reload>0||medBusy())?1:0;bobT+=dt*(6+mv*5); // 걸을 때 흔들림, 재장전 시 총을 내림
    const bx=Math.cos(bobT)*0.012*mv*(ads?0.2:1),by=Math.abs(Math.sin(bobT))*0.014*mv*(ads?0.2:1);
    gun.position.x+=((ads?0:0.28)+bx-gun.position.x)*Math.min(1,dt*18);gun.position.y+=((ads?-0.17:-0.25)-by-rl*0.12-gun.position.y)*Math.min(1,dt*18);
    gun.rotation.x+=((rl?-0.7:0)-gun.rotation.x)*Math.min(1,dt*10);gun.rotation.z+=((rl?0.4:0)-gun.rotation.z)*Math.min(1,dt*10);}
@@ -982,7 +985,7 @@ function update(dt){
   let fx=0,fz=0;if(keys.KeyW)fz-=1;if(keys.KeyS)fz+=1;if(keys.KeyA)fx-=1;if(keys.KeyD)fx+=1;
   fx+=joy.x+padJoy.x;fz+=joy.y+padJoy.y;
   const len=Math.hypot(fx,fz);if(len>1){fx/=len;fz/=len}
-  const frozen=performance.now()<G.startAt;if(frozen){fx=fz=0} // 카운트다운 중에는 움직일 수 없음
+  const frozen=performance.now()<G.startAt;if(frozen){fx=fz=0} // 카운트다운 중에는 움직일 수 없음 (구급상자 사용 중에는 이동·점프 가능)
   P.sprinting=!P.prone&&!zoomed()&&(keys.ShiftLeft||vSprint||padSprint)&&Math.hypot(fx,fz)>0.5;
   P.mv=Math.min(1,Math.hypot(fx,fz))*(P.sprinting?1.5:1)*(P.prone?0.4:1);
   if(P.mv>0.2&&P.onGround){stepT-=dt*P.mv;if(stepT<=0){stepT=0.42;stepSound()}}
