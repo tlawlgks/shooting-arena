@@ -11,6 +11,8 @@ const TEAM_TIME_MS = 3 * 60 * 1000; // 팀전 제한시간 3분 (개인전은 �
 const RESPAWN_MS = 3000;
 const COUNTDOWN_MS = 3000;   // 시작 카운트다운
 const SPAWN_PROTECT_MS = 2000; // 부활 직후 무적
+const MEDKIT_CD_MS = 40000;   // 구급상자 쿨타임
+const MEDKIT_HEAL = 50;       // 구급상자 회복량 (개수 무제한)
 const REGEN_DELAY_MS = 5000;   // 마지막 피격 후 체력 회복 시작까지
 const ARENA = 50;
 
@@ -93,7 +95,7 @@ function topList() {
     .map(u => ({ name: u.name, level: levelOf(u.stats.xp), kills: u.stats.kills, deaths: u.stats.deaths, wins: u.stats.wins }));
 }
 // 터치 버튼 배치(계정에 저장): 알려진 버튼과 숫자 범위만 받아들임
-const TB_IDS = ['fire', 'jump', 'reload', 'swap', 'zoom', 'prone', 'joy'];
+const TB_IDS = ['fire', 'jump', 'reload', 'swap', 'zoom', 'prone', 'joy', 'med'];
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 function cleanLayout(d) {
   if (!d || typeof d !== 'object') return null;
@@ -162,7 +164,7 @@ function startGame(r) {
   const duration = r.mode === 'team' ? TEAM_TIME_MS : 0;
   r.startAt = Date.now() + COUNTDOWN_MS;
   if (duration) r.timer = setTimeout(() => endGame(r), duration + COUNTDOWN_MS);
-  list.forEach(p => { Object.assign(p, { hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {} }); });
+  list.forEach(p => { Object.assign(p, { hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0 }); });
   r.players.forEach(p => {
     send(p, {
       t: 'start', mode: r.mode, you: p.id, limit: KILL_LIMIT[r.mode], duration, countdown: COUNTDOWN_MS,
@@ -276,6 +278,15 @@ wss.on('connection', ws => {
       case 'state':
         if (!r || r.state !== 'play' || !c.alive) break;
         c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0 }; break;
+      case 'medkit': { // 구급상자: 체력 50 회복, 쿨타임 40초, 개수 무제한
+        if (!r || r.state !== 'play' || !c.alive || c.hp >= 100) break;
+        const now = Date.now();
+        if (now - (c.lastMed || 0) < MEDKIT_CD_MS) break;
+        c.lastMed = now; c.hp = Math.min(100, c.hp + MEDKIT_HEAL);
+        send(c, { t: 'hp', id: c.id, hp: c.hp });
+        send(c, { t: 'med', cd: MEDKIT_CD_MS, heal: MEDKIT_HEAL });
+        break;
+      }
       case 'shot': // 다른 플레이어에게 사격 이펙트 전달
         if (r && r.state === 'play' && c.alive) r.players.forEach(p => { if (p !== c) send(p, { t: 'shot', id: c.id, from: m.from, to: m.to }); });
         break;

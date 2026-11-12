@@ -134,6 +134,11 @@
   .tb.sel{outline:3px solid #ffd24a;outline-offset:2px}
   #tbar{display:none;position:fixed;left:50%;top:8px;transform:translateX(-50%);background:#172036f2;border:1px solid var(--line);border-radius:12px;padding:10px 14px;z-index:30;width:min(430px,92vw);font-size:13px;text-align:center}
   #tbar .setrow{margin:6px 0}
+  #med{left:20px;bottom:64px;font-size:15px}
+  #med.cd{opacity:.6}
+  body.touch #med{left:50%;transform:translateX(-50%);bottom:108px;font-size:12px}
+  #tb-med{right:212px;bottom:112px;width:56px;height:56px;font-size:12px;background:#2ecc7155}
+  #healfx{position:fixed;inset:0;background:radial-gradient(transparent 50%,#2ecc71aa);opacity:0;pointer-events:none;transition:opacity .5s}
   .t0{color:#ff7b7f}.t1{color:#7fb0ff}
 </style>
 </head>
@@ -199,6 +204,8 @@
   <div class="card" style="width:min(900px,94vw)">
     <h2>총 선택 <small id="lcount" style="color:#9fb0cc;font-size:14px"></small></h2>
     <div style="color:#9fb0cc;font-size:13px;margin-bottom:8px">최대 2개 · 이미 2개를 골랐다면 새로 누른 총이 먼저 고른 총을 대체해요 · 선택한 총을 다시 누르면 해제 · 게임 중 1, 2번 키나 마우스 휠로 교체 · 우클릭: 조준(모든 총) · Z: 엎드리기 · 연사 없음(클릭 1번 = 1발)</div>
+    <div class="row" id="lcats" style="margin-bottom:8px;gap:6px"></div>
+    <div style="margin-bottom:8px"><input id="lsearch" placeholder="총 이름 검색" style="width:min(300px,80%)"></div>
     <div id="wgrid"></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="b-ldone">완료</button></div>
   </div>
@@ -262,11 +269,12 @@
   <div class="h" id="kmsg"></div><div class="h" id="count"></div>
   <canvas id="mini" width="150" height="150"></canvas>
   <div class="h" id="dead"></div>
+  <div class="h" id="med"></div><div id="healfx"></div>
   <div id="tz"></div><div id="joybase"><div id="joyknob"></div></div>
   <div class="tb" id="tb-fire">발사</div><div class="tb" id="tb-jump">점프</div><div class="tb" id="tb-reload">재장전</div>
-  <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div>
+  <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div>
   <div id="rot">화면을 가로로 돌려 주세요 📱</div>
-  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div></div>
+  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · H 구급상자<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -295,9 +303,19 @@ let LOADOUT=[];
 try{LOADOUT=JSON.parse(localStorage.getItem('loadout')||'[]').filter(i=>WEAPONS[i]).slice(0,2)}catch{}
 if(!LOADOUT.length)LOADOUT=[6,0]; // 기본: 돌격소총 + 권총
 function saveLoadout(){try{localStorage.setItem('loadout',JSON.stringify(LOADOUT))}catch{}$('lsum').textContent=LOADOUT.map(i=>WEAPONS[i].name).join(' + ')}
+// 100종을 고르기 쉽게: 분류 탭 + 이름 검색
+const WCATS=['전체','선택한 총','권총','기관단총','돌격소총','샷건','저격총','기관총','기타'];let lcat='전체';
+function wcat(w){const t=w.type;
+  if(t.includes('기관단총'))return'기관단총';if(t.includes('권총')||t.includes('리볼버'))return'권총';
+  if(t.includes('샷건'))return'샷건';if(t.includes('저격')||t.includes('지정사수')||t.includes('레버'))return'저격총';
+  if(t.includes('기관총'))return'기관총';if(t.includes('돌격소총')||t.includes('전투소총')||t.includes('카빈'))return'돌격소총';return'기타'}
 function renderLoadout(){
-  $('lcount').textContent='('+LOADOUT.length+'/2)';
-  $('wgrid').innerHTML=WEAPONS.map(w=>{
+  $('lcount').textContent='('+LOADOUT.length+'/2) '+LOADOUT.map(i=>WEAPONS[i].name).join(' + ')+' · 전체 '+WEAPONS.length+'종';
+  $('lcats').innerHTML=WCATS.map(c=>'<button class="sm'+(c===lcat?' pri':'')+'" data-c="'+c+'">'+c+'</button>').join('');
+  $('lcats').querySelectorAll('button').forEach(b=>b.onclick=()=>{lcat=b.dataset.c;renderLoadout()});
+  const q=$('lsearch').value.trim().toLowerCase();
+  const list=WEAPONS.filter(w=>(lcat==='전체'||(lcat==='선택한 총'?LOADOUT.includes(w.id):wcat(w)===lcat))&&(!q||w.name.toLowerCase().includes(q)||w.type.includes(q)));
+  $('wgrid').innerHTML=!list.length?'<div class="empty">해당하는 총이 없어요</div>':list.map(w=>{
     const n=LOADOUT.indexOf(w.id);
     return '<div class="wc'+(n>=0?' sel':'')+'" data-i="'+w.id+'">'+(n>=0?'<div class="no">'+(n+1)+'</div>':'')+'<b>'+w.name+'</b><br><span class="ty">'+w.type+'</span><br>'
       +'피해 '+w.dmg+(w.pellets>1?'×'+w.pellets:'')+' · 간격 '+w.cd+'s · 반동 '+(w.recoil*57.3).toFixed(1)+'°<br>탄창 '+w.mag+' · 재장전 '+w.reload+'s'+(w.zoom>1?' · 줌 '+w.zoom+'x':'')+'</div>';
@@ -309,6 +327,7 @@ function renderLoadout(){
     saveLoadout();renderLoadout();
   });
 }
+$('lsearch').addEventListener('input',()=>renderLoadout());
 $('b-load').onclick=()=>{renderLoadout();setScreen('loadout')};
 $('b-ldone').onclick=()=>setScreen('menu');
 saveLoadout();
@@ -339,6 +358,11 @@ function onMsg(m){
     case 'kill':onKill(m);break;
     case 'respawn':onRespawn(m);break;
     case 'left':if(G&&G.players[m.id]){removePlayer(m.id)}break;
+    case 'med': // 구급상자 사용 성공
+      medReadyAt=performance.now()+m.cd;beep(520,0.12,'sine',0.08);setTimeout(()=>beep(780,0.16,'sine',0.08),110);
+      {const f=$('healfx');f.style.opacity=1;setTimeout(()=>f.style.opacity=0,350)}
+      {const b=$('banner');b.textContent='🩹 체력 +'+m.heal;b.style.opacity=1;setTimeout(()=>b.style.opacity=0,1200)}
+      break;
     case 'end':onEnd(m);break;
   }
 }
@@ -631,6 +655,7 @@ function beginGame(m){
   G={mode:m.mode,limit:m.limit,startAt:performance.now()+(m.countdown||0),endsAt:m.duration?performance.now()+m.duration+(m.countdown||0):0,players:{},teamKills:[0,0],feed:[],streak:0};
   for(const p of m.players)if(p.id!==myId)G.players[p.id]=makePlayer(p);
   const me=m.players.find(p=>p.id===myId);
+  medReadyAt=0;
   G.me={id:myId,nick:myNick(),team:me.team,kills:0,deaths:0};
   respawnLocal(me.x,me.z);
   setScreen('game');
@@ -757,7 +782,12 @@ function hitMarker(hs,kill){
   const el=$('hit');el.className='';void el.offsetWidth;el.className='pop'+(kill?' kill':hs?' hs':'');
   if(kill)beep(1300,0.18,'triangle',0.1);else beep(hs?1000:550,hs?0.12:0.07,'triangle',hs?0.1:0.07);
 }
-let lastKillAt=0;
+let lastKillAt=0,medReadyAt=0;
+function useMed(){ // 구급상자: 체력 50 회복, 쿨타임 40초 (서버가 최종 판정)
+  if(!G||!P.alive||performance.now()<G.startAt||performance.now()<medReadyAt)return;
+  if(P.hp>=100){const b=$('banner');b.textContent='체력이 이미 가득 찼어요';b.style.opacity=1;setTimeout(()=>b.style.opacity=0,900);return}
+  send({t:'medkit'});
+}
 function showDmg(dmg,hs,kill){
   if(!dmg)return;
   const d=document.createElement('div');d.className='dn'+(kill?' kill':hs?' hs':'');d.textContent=Math.round(dmg);
@@ -829,7 +859,7 @@ function playing(){return locked()||freeMode||padMode}
 function updatePause(){$('pause').style.display=(screen==='game'&&!playing())?'flex':'none'}
 $('pause').onclick=()=>{padMode=false;canvas.requestPointerLock()};
 document.addEventListener('pointerlockchange',updatePause);
-addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='KeyR')reload();if(e.code==='KeyZ')toggleProne();if(e.code==='Digit1')switchTo(0);if(e.code==='Digit2')switchTo(1)});
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='KeyR')reload();if(e.code==='KeyZ')toggleProne();if(e.code==='KeyH')useMed();if(e.code==='Digit1')switchTo(0);if(e.code==='Digit2')switchTo(1)});
 addEventListener('keyup',e=>keys[e.code]=false);
 addEventListener('mousedown',e=>{
   if(e.button===0&&screen==='game'&&playing()&&!freeMode)shoot(); // 연사 없음: 클릭 1번 = 1발
@@ -914,6 +944,11 @@ function loop(){
       let dy=p.tyaw-p.g.rotation.y;dy=Math.atan2(Math.sin(dy),Math.cos(dy));p.g.rotation.y+=dy*Math.min(1,dt*12);
     }
     if(G.endsAt)renderTop();
+    { // 구급상자 쿨타임 표시
+      const left=Math.ceil((medReadyAt-performance.now())/1000),m=$('med');
+      m.textContent=left>0?'🩹 구급상자 '+left+'초':'🩹 구급상자 준비됨 [H]';m.classList.toggle('cd',left>0);
+      $('tb-med').textContent=left>0?left:'구급';
+    }
     {const cd=G.startAt-performance.now();$('count').textContent=cd>0?Math.ceil(cd/1000):(cd>-800?'시작!':'')} // 시작 카운트다운
     { // 움직임/반동에 따라 벌어지는 조준점
       let g=6;if(P.w.length){const W=CW();g=4+W.spread*900*(zoomed()?0.3:1)*(P.prone?0.6:1)+P.rec*260+(P.mv||0)*7+(P.onGround?0:10)}
@@ -1017,6 +1052,7 @@ tbtn('tb-reload',()=>reload());
 tbtn('tb-swap',()=>switchTo(P.cur===0?1:0));
 $('wbar').addEventListener('touchstart',e=>{const s=e.target.closest('span[data-i]');if(s){e.preventDefault();switchTo(+s.dataset.i)}},{passive:false});
 tbtn('tb-prone',()=>toggleProne());
+tbtn('tb-med',()=>useMed());
 tbtn('tb-zoom',()=>{touchZoom=!touchZoom;$('tb-zoom').classList.toggle('lock',touchZoom)});
 
 // ================= 게임패드 (Xbox/PS 표준 배치) =================
@@ -1040,6 +1076,7 @@ function pollPad(dt){
     if(pr(7)||pr(5))shoot(); // 연사 없음: 누를 때마다 1발
     if(pr(2))reload();
     if(pr(1))toggleProne();
+    if(pr(14))useMed(); // 방향키 왼쪽: 구급상자
     if(pr(3)||pr(12)||pr(13))switchTo(P.cur===0?1:0);
   }
   if(pr(9)&&!freeMode){padMode=false;padZoom=false;updatePause()}
@@ -1048,7 +1085,7 @@ function pollPad(dt){
 
 loop();
 // ---- 터치 버튼 배치 사용자화 (위치 %, 크기 px, 투명도 → 설정에 저장) ----
-const TB_IDS=['fire','jump','reload','swap','zoom','prone','joy'];let editing=false,teSel=null;
+const TB_IDS=['fire','jump','reload','swap','zoom','prone','joy','med'];let editing=false,teSel=null;
 const tbEl=id=>id==='joy'?$('joybase'):$('tb-'+id);
 const saveSet=()=>{try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}};
 function applyTouchLayout(){
