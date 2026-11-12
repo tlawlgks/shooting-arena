@@ -274,7 +274,7 @@
   <div class="tb" id="tb-fire">발사</div><div class="tb" id="tb-jump">점프</div><div class="tb" id="tb-reload">재장전</div>
   <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div>
   <div id="rot">화면을 가로로 돌려 주세요 📱</div>
-  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · H 구급상자<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div></div>
+  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · C 구급상자<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -859,7 +859,7 @@ function playing(){return locked()||freeMode||padMode}
 function updatePause(){$('pause').style.display=(screen==='game'&&!playing())?'flex':'none'}
 $('pause').onclick=()=>{padMode=false;canvas.requestPointerLock()};
 document.addEventListener('pointerlockchange',updatePause);
-addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='KeyR')reload();if(e.code==='KeyZ')toggleProne();if(e.code==='KeyH')useMed();if(e.code==='Digit1')switchTo(0);if(e.code==='Digit2')switchTo(1)});
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='KeyR')reload();if(e.code==='KeyZ')toggleProne();if(e.code==='KeyC')useMed();if(e.code==='Digit1')switchTo(0);if(e.code==='Digit2')switchTo(1)});
 addEventListener('keyup',e=>keys[e.code]=false);
 addEventListener('mousedown',e=>{
   if(e.button===0&&screen==='game'&&playing()&&!freeMode)shoot(); // 연사 없음: 클릭 1번 = 1발
@@ -946,7 +946,7 @@ function loop(){
     if(G.endsAt)renderTop();
     { // 구급상자 쿨타임 표시
       const left=Math.ceil((medReadyAt-performance.now())/1000),m=$('med');
-      m.textContent=left>0?'🩹 구급상자 '+left+'초':'🩹 구급상자 준비됨 [H]';m.classList.toggle('cd',left>0);
+      m.textContent=left>0?'🩹 구급상자 '+left+'초':'🩹 구급상자 준비됨 [C]';m.classList.toggle('cd',left>0);
       $('tb-med').textContent=left>0?left:'구급';
     }
     {const cd=G.startAt-performance.now();$('count').textContent=cd>0?Math.ceil(cd/1000):(cd>-800?'시작!':'')} // 시작 카운트다운
