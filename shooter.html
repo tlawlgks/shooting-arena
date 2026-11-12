@@ -123,6 +123,12 @@
   #feed{top:176px}
   body.touch #mini{width:96px;height:96px;left:8px;top:8px}body.touch #feed{top:112px}
   #low{position:fixed;inset:0;background:radial-gradient(transparent 45%,#c00c);opacity:0;pointer-events:none;transition:opacity .3s}
+  .tb{box-sizing:border-box}
+  #hud.edit .tb{display:flex;cursor:grab}
+  #hud.edit #tz,#hud.edit #dead,#hud.edit #count,#hud.edit #rot{display:none!important}
+  .tb.sel{outline:3px solid #ffd24a;outline-offset:2px}
+  #tbar{display:none;position:fixed;left:50%;top:8px;transform:translateX(-50%);background:#172036f2;border:1px solid var(--line);border-radius:12px;padding:10px 14px;z-index:30;width:min(430px,92vw);font-size:13px;text-align:center}
+  #tbar .setrow{margin:6px 0}
   .t0{color:#ff7b7f}.t1{color:#7fb0ff}
 </style>
 </head>
@@ -162,6 +168,7 @@
     <div class="setrow">시점 감도 <input type="range" id="set-sens" min="0.2" max="3" step="0.1"><b id="v-sens"></b></div>
     <div class="setrow">소리 크기 <input type="range" id="set-vol" min="0" max="1" step="0.05"><b id="v-vol"></b></div>
     <div class="setrow">시야각(FOV) <input type="range" id="set-fov" min="60" max="100" step="1"><b id="v-fov"></b></div>
+    <div class="setrow">터치 버튼 배치 <button class="sm" id="b-tedit">위치·크기 바꾸기</button></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="b-setback">완료</button></div>
   </div>
 </div>
@@ -227,6 +234,14 @@
     <div id="rscores" style="text-align:left"></div>
     <div class="row" style="margin-top:14px"><button class="pri" id="b-rok">대기실로</button></div>
   </div>
+</div>
+
+<!-- 터치 버튼 배치 편집 도구 -->
+<div id="tbar">
+  <div><b>터치 버튼 배치</b><br><small style="color:#9fb0cc">버튼을 끌어서 옮기세요 · 누른 버튼의 크기를 아래에서 조절 · 가로 화면 권장</small></div>
+  <div class="setrow">크기 <span id="te-name" style="color:#ffd24a"></span><input type="range" id="te-size" min="36" max="160" step="2"><b id="te-sv"></b></div>
+  <div class="setrow">투명도 <input type="range" id="te-op" min="0.2" max="1" step="0.05"><b id="te-ov"></b></div>
+  <div class="row"><button class="sm" id="te-reset">초기화</button><button class="sm pri" id="te-done">완료</button></div>
 </div>
 
 <div id="hud">
@@ -972,7 +987,7 @@ document.addEventListener('touchstart',()=>{if(!freeMode&&screen==='game')setTou
 }
 function tbtn(id,down,up){
   const el=$(id);
-  el.addEventListener('touchstart',e=>{e.preventDefault();el.classList.add('on');if(down)down()},{passive:false});
+  el.addEventListener('touchstart',e=>{e.preventDefault();if(editing)return;el.classList.add('on');if(down)down()},{passive:false});
   const end=e=>{e.preventDefault();el.classList.remove('on');if(up)up()};
   el.addEventListener('touchend',end);el.addEventListener('touchcancel',end);
 }
@@ -980,7 +995,7 @@ function tbtn(id,down,up){
 {
   const el=$('tb-fire');let ft=null;
   const stop=e=>{e.preventDefault();if(ft){for(const t of e.changedTouches)if(t.identifier===ft.id){ft=null;touchFire=false;el.classList.remove('on')}}};
-  el.addEventListener('touchstart',e=>{e.preventDefault();if(ft)return;const t=e.changedTouches[0];ft={id:t.identifier,x:t.clientX,y:t.clientY};touchFire=true;el.classList.add('on');shoot()},{passive:false});
+  el.addEventListener('touchstart',e=>{e.preventDefault();if(ft||editing)return;const t=e.changedTouches[0];ft={id:t.identifier,x:t.clientX,y:t.clientY};touchFire=true;el.classList.add('on');shoot()},{passive:false});
   el.addEventListener('touchmove',e=>{e.preventDefault();
     for(const t of e.changedTouches)if(ft&&t.identifier===ft.id&&P.w.length){
       const k=0.0045*SET.sens/(zoomed()?AZ():1);
@@ -1023,6 +1038,50 @@ function pollPad(dt){
 }
 
 loop();
+// ---- 터치 버튼 배치 사용자화 (위치 %, 크기 px, 투명도 → 설정에 저장) ----
+const TB_IDS=['fire','jump','reload','swap','zoom','prone'];let editing=false,teSel=null;
+const saveSet=()=>{try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}};
+function applyTouchLayout(){
+  for(const id of TB_IDS){
+    const el=$('tb-'+id),c=SET.tb&&SET.tb[id];
+    if(c)Object.assign(el.style,{left:c.x+'%',top:c.y+'%',right:'auto',bottom:'auto',width:c.s+'px',height:c.s+'px',transform:'translate(-50%,-50%)',fontSize:Math.max(10,Math.round(c.s*0.2))+'px'});
+    else for(const k of ['left','top','right','bottom','width','height','transform','fontSize'])el.style[k]='';
+    el.style.opacity=SET.tbOp||'';
+  }
+}
+function materialize(){ // 아직 저장값이 없는 버튼은 현재 화면 위치에서 읽어옴
+  SET.tb=SET.tb||{};
+  for(const id of TB_IDS){
+    if(SET.tb[id])continue;const r=$('tb-'+id).getBoundingClientRect();
+    SET.tb[id]={x:+((r.left+r.width/2)/innerWidth*100).toFixed(2),y:+((r.top+r.height/2)/innerHeight*100).toFixed(2),s:Math.round(r.width)};
+  }
+  applyTouchLayout();
+}
+function teSelect(id){
+  teSel=id;for(const k of TB_IDS)$('tb-'+k).classList.toggle('sel',k===id);
+  if(id){$('te-size').value=SET.tb[id].s;$('te-sv').textContent=SET.tb[id].s+'px';$('te-name').textContent=$('tb-'+id).textContent}
+}
+function openEditor(){
+  editing=true;setScreen('tedit');$('hud').classList.add('on','edit');$('tbar').style.display='block';
+  setTimeout(()=>{if(!editing)return;materialize();teSelect('fire');$('te-op').value=SET.tbOp||1;$('te-ov').textContent=Math.round((SET.tbOp||1)*100)+'%'},60);
+}
+function closeEditor(){editing=false;teSelect(null);$('hud').classList.remove('edit');$('tbar').style.display='none';saveSet();setScreen('set')}
+for(const id of TB_IDS){
+  const el=$('tb-'+id);let drag=null;const cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+  el.addEventListener('pointerdown',e=>{if(!editing||!SET.tb||!SET.tb[id])return;e.preventDefault();teSelect(id);drag={px:e.clientX,py:e.clientY,x:SET.tb[id].x,y:SET.tb[id].y};try{el.setPointerCapture(e.pointerId)}catch{}});
+  el.addEventListener('pointermove',e=>{
+    if(!editing||!drag)return;const c=SET.tb[id];
+    c.x=+cl(drag.x+(e.clientX-drag.px)/innerWidth*100,3,97).toFixed(2);c.y=+cl(drag.y+(e.clientY-drag.py)/innerHeight*100,4,96).toFixed(2);applyTouchLayout();
+  });
+  const up=()=>{drag=null};el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);
+}
+$('te-size').addEventListener('input',e=>{if(!teSel||!SET.tb)return;SET.tb[teSel].s=+e.target.value;$('te-sv').textContent=e.target.value+'px';applyTouchLayout()});
+$('te-op').addEventListener('input',e=>{SET.tbOp=+e.target.value;$('te-ov').textContent=Math.round(SET.tbOp*100)+'%';applyTouchLayout()});
+$('te-reset').onclick=()=>{delete SET.tb;delete SET.tbOp;applyTouchLayout();setTimeout(()=>{if(!editing)return;materialize();teSelect('fire');$('te-op').value=1;$('te-ov').textContent='100%'},60)};
+$('te-done').onclick=closeEditor;
+$('b-tedit').onclick=openEditor;
+applyTouchLayout();
+
 // ---- 홈 화면에 추가 (PWA) ----
 let deferredInstall=null;
 const isStandalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
