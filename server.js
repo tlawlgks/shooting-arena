@@ -15,12 +15,19 @@ const REGEN_DELAY_MS = 5000;   // 마지막 피격 후 체력 회복 시작까�
 const ARENA = 50;
 
 // 정적 파일 서버 (shooter.html)
+const STATIC = { // 요청 경로 -> [파일, Content-Type]
+  '/weapons.js': ['weapons.js', 'text/javascript; charset=utf-8'],
+  '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
+  '/icon-192.png': ['icon-192.png', 'image/png'],
+  '/icon-512.png': ['icon-512.png', 'image/png'],
+  '/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png'],
+};
 const server = http.createServer((req, res) => {
-  const isJs = req.url.split('?')[0] === '/weapons.js';
-  const f = path.join(__dirname, isJs ? 'weapons.js' : 'shooter.html');
-  fs.readFile(f, (err, data) => {
-    if (err) { res.writeHead(500); return res.end('file not found'); }
-    res.writeHead(200, { 'Content-Type': isJs ? 'text/javascript; charset=utf-8' : 'text/html; charset=utf-8' });
+  const [file, type] = STATIC[req.url.split('?')[0]] || ['shooter.html', 'text/html; charset=utf-8'];
+  fs.readFile(path.join(__dirname, file), (err, data) => {
+    if (err) { res.writeHead(404); return res.end('file not found'); }
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': type.startsWith('image') ? 'public, max-age=86400' : 'no-cache' });
     res.end(data);
   });
 });

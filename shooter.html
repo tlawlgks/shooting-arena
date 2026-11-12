@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>3D 슈팅 아레나</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0d1320">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="슈팅아레나">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root{--bg:#0d1320;--panel:#172036;--line:#2a3a5c;--text:#e8eef9;--acc:#5aa9ff;--red:#e5484d;--blue:#3b82f6}
   html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,"Malgun Gothic",sans-serif;color:var(--text);user-select:none}
@@ -136,6 +143,7 @@
     </div>
   </div>
   <div id="conn" style="color:#8fa0bb;font-size:13px"></div>
+  <button class="sm inst" style="display:none">📲 홈 화면에 추가</button>
 </div>
 
 <!-- 랭킹 -->
@@ -171,6 +179,7 @@
       <button class="big" id="b-team">팀전</button>
     </div>
   </div>
+  <button class="sm inst" style="display:none">📲 홈 화면에 추가</button>
 </div>
 
 <!-- 총 선택 -->
@@ -1014,6 +1023,18 @@ function pollPad(dt){
 }
 
 loop();
+// ---- 홈 화면에 추가 (PWA) ----
+let deferredInstall=null;
+const isStandalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+const showInst=on=>document.querySelectorAll('.inst').forEach(b=>b.style.display=on?'':'none');
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;if(!isStandalone)showInst(true)});
+addEventListener('appinstalled',()=>{deferredInstall=null;showInst(false)});
+if(!isStandalone&&/iphone|ipad|ipod|android/i.test(navigator.userAgent))showInst(true); // 설치 창을 못 띄우는 브라우저도 안내 버튼은 보여줌
+document.querySelectorAll('.inst').forEach(b=>b.onclick=async()=>{
+  if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;showInst(false)}
+  else showErr(/iphone|ipad|ipod/i.test(navigator.userAgent)?'Safari 아래 공유 버튼(□↑) → "홈 화면에 추가"를 누르세요':'브라우저 메뉴(⋮) → "홈 화면에 추가" 또는 "앱 설치"를 누르세요');
+});
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 connect();
 </script>
 </body>
