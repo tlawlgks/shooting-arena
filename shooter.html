@@ -1602,6 +1602,17 @@ $('te-done').onclick=closeEditor;
 $('b-tedit').onclick=openEditor;
 applyTouchLayout();
 
+// ---- 폰/태블릿: 게임 중 전체 화면 (위에서 쓸어내려도 알림창이 바로 내려오지 않게) ----
+// 운영체제의 알림창을 완전히 막을 수는 없지만, 전체 화면에서는 한 번 쓸면 상태바만 나오고 한 번 더 쓸어야 알림창이 내려옴
+function goFull(){
+  if(!freeMode)return;
+  const el=document.documentElement,req=el.requestFullscreen||el.webkitRequestFullscreen;
+  try{if(!(document.fullscreenElement||document.webkitFullscreenElement)&&req){const p=req.call(el,{navigationUI:'hide'});if(p&&p.catch)p.catch(()=>{})}}catch{}
+  try{const o=window.screen.orientation;if(o&&o.lock){const p=o.lock('landscape');if(p&&p.catch)p.catch(()=>{})}}catch{} // 가로 고정 (지원하는 기기만)
+}
+document.addEventListener('click',e=>{if(freeMode&&(screen==='rooms'||screen==='wait')&&e.target.closest('button'))goFull()}); // 방 만들기/입장/시작을 누를 때
+document.addEventListener('touchend',()=>{if(screen==='game')goFull()},{passive:true});                                        // 게임 중 전체 화면이 풀렸으면 다시
+
 // ---- 홈 화면에 추가 (PWA) ----
 let deferredInstall=null;
 const isStandalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
