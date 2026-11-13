@@ -20,6 +20,7 @@ const MEDKIT_HEAL = 50;       // 구급상자 총 회복량 (개수 무제한)
 const MEDKIT_TICKS = 5;       // 5초 동안 1초마다 10씩 회복, 그동안 다른 행동 불가
 const REGEN_DELAY_MS = 10000;  // 마지막 피격 후 자동 회복 시작까지 (10초)
 const REGEN_STEP_MS = 333;     // 자동 회복 속도: 초당 3 (구급상자는 초당 10)
+const MAX_HP = 200;             // 최대 체력 (피해 100이 넘는 총도 한 방에 죽지 않게)
 const KNIFE_DMG = 100;         // 칼: 근접 한 방
 const NADES = () => ({ frag: 2, smoke: 1 }); // 목숨마다 수류탄 2, 연막탄 1
 const REWARDS = WEAPONS.REWARDS;
@@ -186,7 +187,7 @@ function startGame(r) {
   const duration = r.mode === 'team' ? TEAM_TIME_MS : 0;
   r.startAt = Date.now() + COUNTDOWN_MS;
   if (duration) r.timer = setTimeout(() => endGame(r), duration + COUNTDOWN_MS);
-  list.forEach(p => { Object.assign(p, { hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }); });
+  list.forEach(p => { Object.assign(p, { hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }); });
   r.players.forEach(p => {
     send(p, {
       t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: KILL_LIMIT[r.mode], duration, countdown: COUNTDOWN_MS,
@@ -254,7 +255,7 @@ function damage(r, c, v, dmg, hs) {
   if (limit > 0 && (r.mode === 'team' ? Math.max(...r.teamKills) >= limit : c.kills >= limit)) return endGame(r);
   setTimeout(() => {
     if (r.state !== 'play' || !r.players.has(v.id)) return;
-    v.hp = 100; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS; v.nades = NADES();
+    v.hp = MAX_HP; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS; v.nades = NADES();
     inRoom(r, { t: 'respawn', id: v.id, x: v.sp.x, z: v.sp.z, prot: SPAWN_PROTECT_MS });
   }, RESPAWN_MS);
 }
@@ -339,7 +340,7 @@ wss.on('connection', ws => {
         const bot = { ws: { readyState: 0 }, id: nextId++, nick: '훈련 봇', bot: true, room: null, user: null, guest: true, loadout: [BOT_WEAPON] };
         const room = { id: nextRoomId++, name: '훈련장', mode: 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
         rooms.set(room.id, room); room.players.set(c.id, c); room.players.set(bot.id, bot); c.room = room;
-        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }));
+        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }));
         send(c, { t: 'start', mode: 'ffa', practice: true, bot: bot.id, map: room.map, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
           players: [c, bot].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z, cos: cosOf(q) })) });
         break;
@@ -402,7 +403,7 @@ wss.on('connection', ws => {
         damage(r, c, v, KNIFE_DMG, false); break;
       }
       case 'medkit': { // 구급상자: 체력 50 회복, 쿨타임 40초, 개수 무제한
-        if (!r || r.state !== 'play' || !c.alive || c.hp >= 100 || c.healing) break;
+        if (!r || r.state !== 'play' || !c.alive || c.hp >= MAX_HP || c.healing) break;
         const now = Date.now();
         if (now - (c.lastMed || 0) < MEDKIT_CD_MS) break;
         c.lastMed = now; c.healing = { ticks: MEDKIT_TICKS, next: now + 1000 }; c.healUntil = now + MEDKIT_TICKS * 1000;
@@ -447,11 +448,11 @@ setInterval(() => {
       if (p.healing) { // 구급상자: 1초마다 회복
         if (!p.alive) p.healing = null;
         else if (now >= p.healing.next) {
-          p.hp = Math.min(100, p.hp + MEDKIT_HEAL / MEDKIT_TICKS); send(p, { t: 'hp', id: p.id, hp: p.hp });
+          p.hp = Math.min(MAX_HP, p.hp + MEDKIT_HEAL / MEDKIT_TICKS); send(p, { t: 'hp', id: p.id, hp: p.hp });
           p.healing.next += 1000; if (--p.healing.ticks <= 0) p.healing = null;
         }
       }
-      if (p.alive && p.hp < 100 && now - (p.lastHurt || 0) > REGEN_DELAY_MS && now >= (p.nextRegen || 0)) { p.nextRegen = now + REGEN_STEP_MS; p.hp = Math.min(100, p.hp + 1); send(p, { t: 'hp', id: p.id, hp: p.hp }); } // 느린 자동 회복
+      if (p.alive && p.hp < MAX_HP && now - (p.lastHurt || 0) > REGEN_DELAY_MS && now >= (p.nextRegen || 0)) { p.nextRegen = now + REGEN_STEP_MS; p.hp = Math.min(MAX_HP, p.hp + 1); send(p, { t: 'hp', id: p.id, hp: p.hp }); } // 느린 자동 회복
     });
     inRoom(r, { t: 'states', s });
   });

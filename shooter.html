@@ -178,13 +178,14 @@
   #inv{right:24px;bottom:66px;font-size:15px;text-align:right;line-height:1.5}
   body.touch #inv{right:8px;bottom:auto;top:64px;font-size:11px}
   .tb.empty{filter:grayscale(1) brightness(.45)}
-  #tb-nade{right:280px;bottom:44px;width:54px;height:54px;font-size:20px}
-  #tb-smoke{right:280px;bottom:108px;width:54px;height:54px;font-size:20px}
+  #tb-nade{right:324px;bottom:44px;width:58px;height:58px;font-size:17px}
+  .nsw{position:absolute;left:calc(100% + 6px);top:50%;transform:translateY(-50%);width:64%;height:64%;border-radius:50%;background:#fff3;border:2px solid #fff7;display:flex;align-items:center;justify-content:center;font-size:.85em;box-sizing:border-box}
   #tb-knife{right:104px;bottom:192px;width:54px;height:54px;font-size:20px}
   #tb-air{display:none!important;right:16px;top:118px;width:58px;height:58px;font-size:22px;background:#ffb02099}
   body.touch #tb-air.rdy{display:flex!important}
   #hud.edit #tb-air{display:none!important}
   .cositem{display:inline-flex;align-items:center;gap:6px;margin:4px;padding:6px 10px;border-radius:8px;border:2px solid var(--line);background:#0d1526;cursor:pointer;font-size:13px}
+  .swb{display:inline-block;width:22px;height:22px;border-radius:6px;border:2px solid #0008;vertical-align:middle;margin-right:8px}
   .cositem.sel{border-color:#ffd24a;background:#2a2410}.cositem.lock{opacity:.45;cursor:not-allowed}
   .cositem i{width:16px;height:16px;border-radius:50%;display:inline-block;border:1px solid #0008}
   #cosbody h3{margin:12px 0 4px;font-size:15px;text-align:left}#cosbody{text-align:left}
@@ -324,7 +325,7 @@
 
 <div id="hud">
   <div id="cross"><i></i><i></i><i></i><i></i><b></b><u></u></div><div id="low"></div><div id="killfx"></div><div id="hit"><i></i><i></i><i></i><i></i></div><div id="hurt"></div><div id="dirs"></div>
-  <div class="h" id="hp">HP <span id="hpn">100</span><div id="hpbar"><div id="hpfill"></div></div></div>
+  <div class="h" id="hp">HP <span id="hpn">200</span><div id="hpbar"><div id="hpfill"></div></div></div>
   <div class="h" id="ammo">30 / 30</div>
   <div class="h" id="wbar"></div>
   <div id="scope"></div>
@@ -338,7 +339,7 @@
   <div class="h" id="inv"></div><div class="h" id="med"></div><div class="h" id="healing"></div><div id="healfx"></div>
   <div id="tz"></div><div id="joybase"><div id="joyknob"></div></div>
   <div class="tb" id="tb-fire">발사</div><div class="tb" id="tb-jump">점프</div><div class="tb" id="tb-reload">재장전</div>
-  <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div><div class="tb" id="tb-nade">💣</div><div class="tb" id="tb-smoke">💨</div><div class="tb" id="tb-knife">🔪</div><div class="tb" id="tb-air">✈</div>
+  <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div><div class="tb" id="tb-nade"><span id="nade-lab">💣2</span><b class="nsw">⇄</b></div><div class="tb" id="tb-knife">🔪</div><div class="tb" id="tb-air">✈</div>
   <div id="tb-exit">✕ 나가기</div>
   <div id="rot">화면을 가로로 돌려 주세요 📱</div>
   <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · C 구급상자<br>G 수류탄 · T 연막탄 · V 칼 · X 공습(5연속 처치 보상)<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div><button class="sm" id="b-quit" style="margin-top:14px">게임 나가기</button></div>
@@ -414,7 +415,7 @@ function onMsg(m){
     case 'autherr':if(m.expired){try{localStorage.removeItem('token')}catch{}}else $('lmsg').textContent=m.msg;break;
     case 'loggedout':ME=null;setScreen('login');break;
     case 'stats':if(ME&&!ME.guest){const old=ME.stats?ME.stats.level:m.stats.level;ME.stats=m.stats;renderProfile();
-      if(m.stats.level>old){const nw=[];for(const k of ['color','skin','title'])REWARDS[k].forEach(it=>{if(it.lv>old&&it.lv<=m.stats.level)nw.push(it.n)});showErr('🎉 레벨 업! Lv.'+m.stats.level+(nw.length?' · 새 보상: '+nw.join(', '):''))}}break;
+      if(m.stats.level>old){const nw=[];REWARDS.color.forEach(it=>{if(it.lv>old&&it.lv<=m.stats.level)nw.push(it.n)});for(const [k,lab] of [['skin','스킨 '],['title','칭호 ']]){const tt=REWARDS[k][Math.min(m.stats.level,REWARDS[k].length-1)];if(tt)nw.push(lab+tt.n)}showErr('🎉 레벨 업! Lv.'+m.stats.level+(nw.length?' · 새 보상: '+nw.join(', '):''))}}break;
     case 'cos':if(ME){ME.cos=m.cos;renderProfile();if(screen==='cos')renderCos()}break;
     case 'throw':if(G)spawnNade(m.k,m.p,m.v,false);break;
     case 'air':if(G)airStrike(m);break;
@@ -453,16 +454,26 @@ $('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth()});
 $('b-guest').onclick=()=>{if(!ws||ws.readyState!==1){$('lmsg').textContent='서버에 연결되지 않았어요';return}send({t:'guest',nick:nickEl.value.trim()})};
 const titleTag=i=>(i>0&&REWARDS.title[i])?'<small style="color:#ffd24a">['+REWARDS.title[i].n+']</small> ':'';
 const hex=v=>'#'+v.toString(16).padStart(6,'0');
-function renderCos(){ // 레벨 보상 선택 화면
+function renderCos(){ // 레벨 보상 선택 화면 (색은 버튼, 총 스킨·칭호는 1000개씩이라 선택 상자)
   const g=!ME||ME.guest,lv=g?0:ME.stats.level,cos=(ME&&ME.cos)||{color:0,skin:0,title:0};
   $('coslv').textContent=g?'로그인하면 레벨 보상을 받을 수 있어요':'내 레벨 Lv.'+lv;
   const sec=(k,title)=>'<h3>'+title+'</h3>'+REWARDS[k].map((it,i)=>{const lock=lv<it.lv;
     return '<span class="cositem'+(cos[k]===i?' sel':'')+(lock?' lock':'')+'" data-k="'+k+'" data-i="'+i+'">'+(it.v?'<i style="background:'+hex(it.v)+'"></i>':'')+it.n+(lock?' 🔒Lv.'+it.lv:'')+'</span>'}).join('');
-  $('cosbody').innerHTML=sec('color','캐릭터 색 (개인전: 몸 전체 · 팀전: 팔)')+sec('skin','총 스킨')+sec('title','칭호 (대기실·랭킹·프로필에 표시)');
+  const pick=(k,title,none)=>{ // 레벨마다 1개씩 받는 보상: 높은 것부터 나열
+    const T=REWARDS[k],top=Math.min(lv,T.length-1),next=T[top+1],cur=T[cos[k]]||T[0];
+    let opts='<option value="0">'+none+'</option>';for(let i=top;i>=1;i--)opts+='<option value="'+i+'"'+(cos[k]===i?' selected':'')+'>Lv.'+i+' · '+T[i].n+'</option>';
+    return '<h3>'+title+' <small style="color:#9fb0cc;font-weight:400">· 레벨마다 1개씩, 총 '+(T.length-1)+'개</small></h3>'
+      +(g?'<span class="cositem lock">🔒 로그인하면 레벨마다 하나씩 받아요</span>'
+         :(k==='skin'?'<i class="swb" style="background:'+(cur.v?hex(cur.v):'#222')+'"></i>':'')+'<select data-pick="'+k+'" style="max-width:62%">'+opts+'</select> <button class="sm" data-best="'+k+'">가장 높은 것 쓰기</button>'
+          +'<div style="color:#9fb0cc;font-size:13px;margin-top:6px">지금 쓸 수 있는 가장 높은 것: <b style="color:#ffd24a">'+(top?T[top].n:none)+'</b>'+(next?' · 다음: '+next.n+' (Lv.'+next.lv+')':' · 전부 얻었어요!')+'</div>');
+  };
+  $('cosbody').innerHTML=sec('color','캐릭터 색 (개인전: 몸 전체 · 팀전: 팔)')+pick('skin','총 스킨','기본')+pick('title','칭호 (대기실·랭킹·프로필에 표시)','없음');
   $('cosbody').querySelectorAll('.cositem').forEach(el=>el.onclick=()=>{
     if(el.classList.contains('lock')){showErr(g?'로그인이 필요해요':'레벨이 부족해요');return}
     send(Object.assign({t:'cos'},cos,{[el.dataset.k]:+el.dataset.i}));
   });
+  $('cosbody').querySelectorAll('select[data-pick]').forEach(s=>s.onchange=()=>send(Object.assign({t:'cos'},cos,{[s.dataset.pick]:+s.value})));
+  $('cosbody').querySelectorAll('button[data-best]').forEach(bt=>bt.onclick=()=>send(Object.assign({t:'cos'},cos,{[bt.dataset.best]:Math.min(lv,REWARDS[bt.dataset.best].length-1)})));
 }
 function renderProfile(){
   const g=!ME||ME.guest,s=ME&&ME.stats;
@@ -983,7 +994,8 @@ const flash=new THREE.PointLight(0xffcc66,0,8);flash.position.set(0.28,-0.2,-1);
 let flashT=0;
 
 // ================= 게임 상태 =================
-const P={x:0,z:0,y:1.7,vy:0,yaw:0,pitch:0,hp:100,reload:0,cool:0,alive:false,onGround:true,w:[],cur:0};
+const MAX_HP=200; // 최대 체력 (서버와 같아야 함)
+const P={x:0,z:0,y:1.7,vy:0,yaw:0,pitch:0,hp:MAX_HP,reload:0,cool:0,alive:false,onGround:true,w:[],cur:0};
 const CW=()=>WEAPONS[P.w[P.cur].id];
 let touchFire=false,rightDown=false,padZoom=false,touchZoom=false,freeMode=false,padMode=false,vSprint=false,padSprint=false,padJump=false;
 const joy={x:0,y:0},padJoy={x:0,y:0};
@@ -1057,7 +1069,8 @@ function deathFx(v,m){ // 맞은 방향으로 밀려나며 쓰러지고, 헤드�
 
 // ---- 수류탄 · 연막탄 (던지면 튕기다가 터짐. 궤적은 모든 화면에서 같은 계산으로 재현) ----
 const nades=[],smokes=[],airs=[],nadeGeo=new THREE.SphereGeometry(0.11,8,6),smokeGeo=new THREE.SphereGeometry(1,10,8);
-let myNades={frag:2,smoke:1},shakeT=0,meleeCool=0;
+let myNades={frag:2,smoke:1},shakeT=0,meleeCool=0,nadeSel='frag'; // nadeSel: 버튼으로 던질 종류
+function swapNade(){nadeSel=nadeSel==='frag'?'smoke':'frag';beep(420,0.05,'triangle',0.04);hud()}
 function notice(text,ms){const b=$('banner');b.textContent=text;b.style.opacity=1;clearTimeout(notice.t);notice.t=setTimeout(()=>b.style.opacity=0,ms||2200)}
 function spawnNade(k,p,v,mine){
   const m=new THREE.Mesh(nadeGeo,new THREE.MeshLambertMaterial({color:k==='smoke'?0xaab0b6:0x3a4a2a}));m.position.set(p[0],p[1],p[2]);scene.add(m);
@@ -1224,7 +1237,7 @@ function makePlayer(p){
   const hit=[body,head,helmet,legL.mesh,legR.mesh]; // 총알 판정 부위
   hit.forEach(m=>m.userData.pid=p.id);head.userData.head=helmet.userData.head=true;
   g.position.set(p.x||0,0,p.z||0);scene.add(g);
-  return{...p,g,pose,pr:0,tpr:0,body,head,helmet,legL,legR,hit,walk:0,deadT:0,hp:100,alive:true,kills:0,deaths:0,tx:p.x||0,tz:p.z||0,ty:0,tyaw:0};
+  return{...p,g,pose,pr:0,tpr:0,body,head,helmet,legL,legR,hit,walk:0,deadT:0,hp:MAX_HP,alive:true,kills:0,deaths:0,tx:p.x||0,tz:p.z||0,ty:0,tyaw:0};
 }
 function removePlayer(id){const p=G.players[id];if(!p)return;scene.remove(p.g);delete G.players[id];renderSB()}
 
@@ -1246,7 +1259,7 @@ function beginGame(m){
 }
 function endLocalGame(){clearDirs();clearThrowables();if(G&&G.over&&G.over.mine)scene.remove(G.over.target.g);$('hud').classList.remove('over','win');if(G){for(const id in G.players)scene.remove(G.players[id].g);G=null}P.alive=false}
 function respawnLocal(x,z){
-  Object.assign(P,{x,z,y:1.7,vy:0,hp:100,reload:0,alive:true,prone:false,pl:0,noJump:false,rec:0,yaw:Math.atan2(-x,-z)+Math.PI,pitch:0});
+  Object.assign(P,{x,z,y:1.7,vy:0,hp:MAX_HP,reload:0,alive:true,prone:false,pl:0,noJump:false,rec:0,yaw:Math.atan2(-x,-z)+Math.PI,pitch:0});
   P.w=LOADOUT.map(id=>({id,ammo:WEAPONS[id].mag}));P.cur=0;applyGunModel();myNades={frag:2,smoke:1};
   for(let i=0;i<4;i++)movePlayer(P.x,P.z,0);camY=P.y;
   $('dead').style.display='none';hud();
@@ -1314,13 +1327,13 @@ function onKill(m){
 function onRespawn(m){
   if(!G)return;
   if(m.id===myId){respawnLocal(m.x,m.z);if(m.prot){const b=$('banner');b.textContent='🛡 부활 보호 '+(m.prot/1000)+'초';b.style.opacity=1;setTimeout(()=>b.style.opacity=0,m.prot)}}
-  else{const p=G.players[m.id];if(p){p.alive=true;p.hp=100;p.deadT=0;if(p.helmet)p.helmet.visible=true;p.protUntil=performance.now()+(m.prot||0);p.g.visible=true;p.g.position.set(m.x,0,m.z);p.tx=m.x;p.tz=m.z}}
+  else{const p=G.players[m.id];if(p){p.alive=true;p.hp=MAX_HP;p.deadT=0;if(p.helmet)p.helmet.visible=true;p.protUntil=performance.now()+(m.prot||0);p.g.visible=true;p.g.position.set(m.x,0,m.z);p.tx=m.x;p.tz=m.z}}
 }
 function onEnd(m){ // 경기 종료: 가운데 "경기 종료" + 1등을 3초간 3인칭으로 보여준 뒤 결과 화면
   if(!G||m.reason||G.over||m.winnerId==null){showResult(m);return}
   const mine=m.winnerId===myId;let target;
   if(mine){ // 내가 1등: 내 캐릭터를 만들어 3인칭으로 보여주고, 3초 동안 계속 움직일 수 있음
-    target=makePlayer({id:-1,nick:'',team:G.me.team,x:P.x,z:P.z,cos:ME&&ME.cos});if(!P.alive){P.alive=true;P.hp=100}
+    target=makePlayer({id:-1,nick:'',team:G.me.team,x:P.x,z:P.z,cos:ME&&ME.cos});if(!P.alive){P.alive=true;P.hp=MAX_HP}
   }else{
     target=G.players[m.winnerId];if(!target){showResult(m);return}
     target.alive=true;target.deadT=0;target.g.visible=true;target.protUntil=0;if(target.helmet)target.helmet.visible=true;P.alive=false;
@@ -1342,14 +1355,15 @@ function showResult(m){
 
 // ================= HUD =================
 function hud(){
-  $('hpfill').style.width=Math.max(0,P.hp)+'%';
-  $('hpfill').style.background=P.hp>60?'#3ecf6e':P.hp>30?'#e6b93c':'#e5484d';
+  $('hpfill').style.width=Math.max(0,Math.min(100,P.hp/MAX_HP*100))+'%';
+  $('hpfill').style.background=P.hp>MAX_HP*0.6?'#3ecf6e':P.hp>MAX_HP*0.3?'#e6b93c':'#e5484d';
   $('hpn').textContent=Math.max(0,Math.ceil(P.hp));
-  $('low').style.opacity=(P.alive&&P.hp<40)?(40-P.hp)/40*0.9:0; // 체력이 낮으면 화면 가장자리가 붉어짐
+  $('low').style.opacity=(P.alive&&P.hp<MAX_HP*0.4)?(MAX_HP*0.4-P.hp)/(MAX_HP*0.4)*0.9:0; // 체력이 낮으면 화면 가장자리가 붉어짐
   { // 보유 장비: 수류탄, 연막탄, 칼, (보상) 공습
     const pc=!freeMode,air=G&&G.air>0;
-    $('inv').innerHTML='💣 '+myNades.frag+(pc?' <small>[G]</small>':'')+' · 💨 '+myNades.smoke+(pc?' <small>[T]</small>':'')+' · 🔪'+(pc?' <small>[V]</small>':'')+(air?'<br><span style="color:#ffd24a">✈ 공습 '+G.air+(pc?' <small>[X]</small>':'')+'</span>':'');
-    $('tb-nade').classList.toggle('empty',myNades.frag<=0);$('tb-smoke').classList.toggle('empty',myNades.smoke<=0);$('tb-air').classList.toggle('rdy',!!air);
+    const selm=k=>(!pc&&nadeSel===k)?'▸':''; // 터치/패드: 지금 선택된 것 표시
+    $('inv').innerHTML=selm('frag')+'💣 '+myNades.frag+(pc?' <small>[G]</small>':'')+' · '+selm('smoke')+'💨 '+myNades.smoke+(pc?' <small>[T]</small>':'')+' · 🔪'+(pc?' <small>[V]</small>':'')+(air?'<br><span style="color:#ffd24a">✈ 공습 '+G.air+(pc?' <small>[X]</small>':'')+'</span>':'');
+    $('nade-lab').textContent=(nadeSel==='frag'?'💣':'💨')+myNades[nadeSel];$('tb-nade').classList.toggle('empty',myNades[nadeSel]<=0);$('tb-air').classList.toggle('rdy',!!air);
   }
   if(!P.w.length)return;
   const s=P.w[P.cur],W=CW();
@@ -1394,7 +1408,7 @@ let lastKillAt=0,medReadyAt=0,medBusyUntil=0;
 const medBusy=()=>performance.now()<medBusyUntil; // 구급상자 사용 중(5초): 사격·재장전·총 교체·조준 불가, 이동·점프·엎드리기는 가능
 function useMed(){ // 구급상자: 체력 50 회복, 쿨타임 40초 (서버가 최종 판정)
   if(!G||!P.alive||performance.now()<G.startAt||performance.now()<medReadyAt)return;
-  if(P.hp>=100){const b=$('banner');b.textContent='체력이 이미 가득 찼어요';b.style.opacity=1;setTimeout(()=>b.style.opacity=0,900);return}
+  if(P.hp>=MAX_HP){const b=$('banner');b.textContent='체력이 이미 가득 찼어요';b.style.opacity=1;setTimeout(()=>b.style.opacity=0,900);return}
   send({t:'medkit'});
 }
 function showDmg(dmg,hs,kill){
@@ -1682,7 +1696,11 @@ tbtn('tb-swap',()=>switchTo(P.cur===0?1:0));
 $('wbar').addEventListener('touchstart',e=>{const s=e.target.closest('span[data-i]');if(s){e.preventDefault();switchTo(+s.dataset.i)}},{passive:false});
 tbtn('tb-prone',()=>toggleProne());
 tbtn('tb-med',()=>useMed());
-tbtn('tb-nade',()=>throwNade('frag'));tbtn('tb-smoke',()=>throwNade('smoke'));tbtn('tb-knife',()=>melee());tbtn('tb-air',()=>callAir());
+{ // 던지기 버튼: 본체를 누르면 선택한 것을 던지고, 옆 화살표를 누르면 수류탄 ↔ 연막탄 전환
+  const el=$('tb-nade');
+  el.addEventListener('touchstart',e=>{e.preventDefault();if(editing)return;if(e.target.closest('.nsw'))swapNade();else{el.classList.add('on');throwNade(nadeSel)}},{passive:false});
+  const end=e=>{e.preventDefault();el.classList.remove('on')};el.addEventListener('touchend',end);el.addEventListener('touchcancel',end);
+}tbtn('tb-knife',()=>melee());tbtn('tb-air',()=>callAir());
 tbtn('tb-zoom',()=>{touchZoom=!touchZoom;$('tb-zoom').classList.toggle('lock',touchZoom)});
 
 // ================= 게임패드 (Xbox/PS 표준 배치) =================
@@ -1704,8 +1722,8 @@ function pollPad(dt){
     const k=3.2*SET.sens*dt/(zoomed()?AZ():1); // 스틱을 끝까지 밀수록 빠르게(곡선)
     P.yaw-=Math.sign(rx)*rx*rx*k;P.pitch=Math.max(-1.5,Math.min(1.5,P.pitch-Math.sign(ry)*ry*ry*k));
     if(pr(7))shoot();          // RT: 발사 (누를 때마다 1발)
-    if(pr(5))throwNade('frag'); // RB: 수류탄
-    if(pr(15))throwNade('smoke');// 방향키 오른쪽: 연막탄
+    if(pr(5))throwNade(nadeSel); // RB: 선택한 것(수류탄/연막탄) 던지기
+    if(pr(15))swapNade();        // 방향키 오른쪽: 수류탄 ↔ 연막탄 전환
     if(pr(11))melee();          // R3(오른쪽 스틱 누르기): 칼
     if(pr(12))callAir();        // 방향키 위: 공습
     if(pr(2))reload();
@@ -1719,7 +1737,7 @@ function pollPad(dt){
 
 loop();
 // ---- 터치 버튼 배치 사용자화 (위치 %, 크기 px, 투명도 → 설정에 저장) ----
-const TB_IDS=['fire','jump','reload','swap','zoom','prone','joy','med','nade','smoke','knife'];let editing=false,teSel=null;
+const TB_IDS=['fire','jump','reload','swap','zoom','prone','joy','med','nade','knife'];let editing=false,teSel=null;
 const tbEl=id=>id==='joy'?$('joybase'):$('tb-'+id);
 const saveSet=()=>{try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}};
 function applyTouchLayout(){
