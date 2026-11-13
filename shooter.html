@@ -156,6 +156,25 @@
   #tb-exit{display:none;position:fixed;left:50%;top:46px;transform:translateX(-50%);background:#0009;border:1px solid #fff5;border-radius:8px;padding:5px 12px;font-size:12px;color:#fff;z-index:6;font-weight:700}
   body.touch #tb-exit{display:block}
   #hud.over #tb-exit,#hud.edit #tb-exit{display:none!important}
+  /* 조준선: 모양(data-s) / 색(--c) / 크기(--len, --th, --dot) 를 설정에서 변경. --g 는 움직임에 따라 벌어지는 간격 */
+  :is(#cross,#chprev){--c:#fff;--len:9px;--th:2px;--dot:2.4px}
+  #chprev{position:absolute;left:50%;top:50%;width:0;height:0;--g:7px}
+  #chprev i{position:absolute;box-shadow:0 0 2px #000}
+  :is(#cross,#chprev) i{background:var(--c)}
+  :is(#cross,#chprev) i:nth-child(1){width:var(--th);height:var(--len);left:calc(var(--th)/-2);top:calc(-1*var(--len) - var(--g))}
+  :is(#cross,#chprev) i:nth-child(2){width:var(--th);height:var(--len);left:calc(var(--th)/-2);top:var(--g)}
+  :is(#cross,#chprev) i:nth-child(3){width:var(--len);height:var(--th);top:calc(var(--th)/-2);left:calc(-1*var(--len) - var(--g))}
+  :is(#cross,#chprev) i:nth-child(4){width:var(--len);height:var(--th);top:calc(var(--th)/-2);left:var(--g)}
+  :is(#cross,#chprev) b{position:absolute;width:var(--dot);height:var(--dot);left:calc(var(--dot)/-2);top:calc(var(--dot)/-2);background:var(--c);border-radius:50%;box-shadow:0 0 2px #000}
+  :is(#cross,#chprev) u{display:none;position:absolute;box-sizing:border-box;border:var(--th) solid var(--c);border-radius:50%;width:calc(2*var(--g) + var(--len)*1.6);height:calc(2*var(--g) + var(--len)*1.6);left:calc(-1*var(--g) - var(--len)*0.8);top:calc(-1*var(--g) - var(--len)*0.8);box-shadow:0 0 2px #000,inset 0 0 2px #000}
+  :is(#cross,#chprev)[data-s=cross] b{display:none}
+  :is(#cross,#chprev)[data-s=dot] i{display:none}
+  :is(#cross,#chprev)[data-s=circle] i{display:none}
+  :is(#cross,#chprev)[data-s=circle] u{display:block}
+  :is(#cross,#chprev)[data-s=t] i:nth-child(1){display:none}
+  #chbox{position:relative;height:84px;border-radius:10px;background:linear-gradient(#7fa9d6 0%,#b9cfe2 48%,#5f8656 52%,#4a6b4a 100%);margin:8px 0}
+  .sw{width:26px;height:26px;border-radius:50%;padding:0;margin-left:6px;border:2px solid #0006}
+  .sw.sel{outline:2px solid #ffd24a;outline-offset:2px}
   .t0{color:#ff7b7f}.t1{color:#7fb0ff}
 </style>
 </head>
@@ -197,6 +216,10 @@
     <div class="setrow">시야각(FOV) <input type="range" id="set-fov" min="60" max="100" step="1"><b id="v-fov"></b></div>
     <div class="setrow">그래픽 <span><button class="sm" id="gfx-normal">일반</button> <button class="sm" id="gfx-high">고급</button></span></div>
     <div style="color:#9fb0cc;font-size:12px;text-align:left;margin-top:-4px">고급: 질감·풀·숲·산 (무거움) / 일반: 단순한 그래픽 (가벼움) · 바꾸면 새로고침돼요</div>
+    <div class="setrow">조준선 모양 <select id="ch-style"><option value="crossdot">십자 + 점</option><option value="cross">십자선</option><option value="dot">점</option><option value="circle">원 + 점</option><option value="t">T자</option></select></div>
+    <div class="setrow">조준선 색 <span id="ch-colors"></span></div>
+    <div class="setrow">조준선 크기 <input type="range" id="ch-size" min="0.6" max="2.6" step="0.1"><b id="v-chsize"></b></div>
+    <div id="chbox"><div id="chprev"><i></i><i></i><i></i><i></i><b></b><u></u></div></div>
     <div class="setrow">터치 버튼 배치 <button class="sm" id="b-tedit">위치·크기 바꾸기</button></div>
     <div class="row" style="margin-top:12px"><button class="pri" id="b-setback">완료</button></div>
   </div>
@@ -278,7 +301,7 @@
 </div>
 
 <div id="hud">
-  <div id="cross"><i></i><i></i><i></i><i></i><b></b></div><div id="low"></div><div id="killfx"></div><div id="hit"><i></i><i></i><i></i><i></i></div><div id="hurt"></div><div id="dirs"></div>
+  <div id="cross"><i></i><i></i><i></i><i></i><b></b><u></u></div><div id="low"></div><div id="killfx"></div><div id="hit"><i></i><i></i><i></i><i></i></div><div id="hurt"></div><div id="dirs"></div>
   <div class="h" id="hp">HP <span id="hpn">100</span><div id="hpbar"><div id="hpfill"></div></div></div>
   <div class="h" id="ammo">30 / 30</div>
   <div class="h" id="wbar"></div>
@@ -420,6 +443,25 @@ function syncSet(){
   $('v-sens').textContent=(+SET.sens).toFixed(1)+'x';$('v-vol').textContent=Math.round(SET.vol*100)+'%';$('v-fov').textContent=SET.fov+'°';
 }
 for(const k of ['sens','vol','fov'])$('set-'+k).addEventListener('input',e=>{SET[k]=+e.target.value;try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}syncSet()});
+// ---- 조준선 사용자화 (모양 / 색 / 크기, 기기에 저장) ----
+const CH_DEF={s:'crossdot',c:'#ffffff',z:1},CH_COLORS=['#ffffff','#39ff5a','#ff3b3b','#ffe14a','#35e0ff','#ff5ad1'];
+function applyCross(){
+  const ch=Object.assign({},CH_DEF,SET.ch||{});
+  if(!CH_COLORS.includes(ch.c))ch.c=CH_DEF.c;ch.z=Math.max(0.6,Math.min(2.6,+ch.z||1));
+  for(const id of ['cross','chprev']){
+    const el=$(id);el.dataset.s=ch.s;el.style.setProperty('--c',ch.c);
+    el.style.setProperty('--len',(9*ch.z).toFixed(1)+'px');el.style.setProperty('--th',Math.max(1.5,2*ch.z).toFixed(1)+'px');
+    el.style.setProperty('--dot',(ch.s==='dot'?Math.max(4,5*ch.z):Math.max(2,2.4*ch.z)).toFixed(1)+'px');
+  }
+  $('ch-style').value=ch.s;$('ch-size').value=ch.z;$('v-chsize').textContent=ch.z.toFixed(1)+'x';
+  $('ch-colors').querySelectorAll('.sw').forEach(b=>b.classList.toggle('sel',b.dataset.c===ch.c));
+}
+function setCross(k,v){SET.ch=Object.assign({},CH_DEF,SET.ch||{},{[k]:v});try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}applyCross()}
+$('ch-colors').innerHTML=CH_COLORS.map(c=>'<button class="sw" data-c="'+c+'" style="background:'+c+'"></button>').join('');
+$('ch-colors').querySelectorAll('.sw').forEach(b=>b.onclick=()=>setCross('c',b.dataset.c));
+$('ch-style').onchange=e=>setCross('s',e.target.value);
+$('ch-size').addEventListener('input',e=>setCross('z',+e.target.value));
+applyCross();
 function setGfx(v){ // 그래픽 모드는 맵을 다시 만들어야 해서 새로고침으로 적용
   if((v==='high')===HQ)return;
   SET.gfx=v;try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}
@@ -1135,7 +1177,8 @@ function showResult(m){
   endLocalGame();
   $('rwin').textContent=m.winner||'게임 종료';
   $('rsub').textContent=m.reason||(m.teamKills&&room&&room.mode==='team'?'레드 '+m.teamKills[0]+' : '+m.teamKills[1]+' 블루':'');
-  $('rscores').innerHTML=m.scores.sort((a,b)=>b.kills-a.kills).map(s=>'<div class="pl"><span'+(s.team>=0?' class="t'+s.team+'"':'')+'>'+esc(s.nick)+'</span><span>'+s.kills+' 킬 / '+s.deaths+' 데스</span></div>').join('');
+  $('rscores').innerHTML=m.scores.sort((a,b)=>(a.left?1:0)-(b.left?1:0)||b.kills-a.kills) // 도중에 나간 사람은 킬 수와 상관없이 맨 아래
+    .map((s,i)=>'<div class="pl"'+(s.left?' style="opacity:.55"':'')+'><span'+(s.team>=0?' class="t'+s.team+'"':'')+'>'+(i+1)+'. '+esc(s.nick)+(s.left?' <small>(나감 · 최하위)</small>':'')+'</span><span>'+s.kills+' 킬 / '+s.deaths+' 데스</span></div>').join('');
   setScreen('result');
 }
 

@@ -152,6 +152,9 @@ function leaveRoom(c) {
   else {
     if (r.host === c.id) r.host = r.players.keys().next().value;
     if (r.state === 'play') {
+      // 경기 도중 나간 사람: 킬 수와 상관없이 결과에서 무조건 최하위. 전적에는 한 판(패배)으로 기록
+      (r.left = r.left || []).push({ nick: c.nick, team: c.team, kills: c.kills || 0, deaths: c.deaths || 0, left: true });
+      const lst = statOf(c); if (lst) { lst.games++; saveUsers(); }
       inRoom(r, { t: 'left', id: c.id });
       if (r.players.size < 2) return endGame(r, '인원이 부족해서 게임이 종료되었어요');
     } else sendRoom(r);
@@ -167,6 +170,7 @@ function startGame(r) {
     list.forEach((p, i) => p.team = i % 2);
   } else list.forEach(p => p.team = -1);
   r.teamKills = [0, 0];
+  r.left = []; // 이번 경기 도중 나간 사람들
   clearTimeout(r.timer);
   const duration = r.mode === 'team' ? TEAM_TIME_MS : 0;
   r.startAt = Date.now() + COUNTDOWN_MS;
@@ -210,7 +214,7 @@ function endGame(r, reason) {
   }
   inRoom(r, {
     t: 'end', winner, winnerId, reason: reason || '',
-    scores: ps.map(p => ({ nick: p.nick, team: p.team, kills: p.kills, deaths: p.deaths })), teamKills: r.teamKills
+    scores: [...ps].sort((a, b) => b.kills - a.kills).map(p => ({ nick: p.nick, team: p.team, kills: p.kills, deaths: p.deaths })).concat(r.left || []), teamKills: r.teamKills
   });
   r.players.forEach(p => { p.team = -1; });
   setTimeout(() => { if (rooms.has(r.id)) sendRoom(r); }, 100);
