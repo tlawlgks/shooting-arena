@@ -18,7 +18,11 @@ const SPAWN_PROTECT_MS = 2000; // 부활 직후 무적
 const MEDKIT_CD_MS = 40000;   // 구급상자 쿨타임
 const MEDKIT_HEAL = 50;       // 구급상자 총 회복량 (개수 무제한)
 const MEDKIT_TICKS = 5;       // 5초 동안 1초마다 10씩 회복, 그동안 다른 행동 불가
-const REGEN_DELAY_MS = 5000;   // 마지막 피격 후 체력 회복 시작까지
+const REGEN_DELAY_MS = 10000;  // 마지막 피격 후 자동 회복 시작까지 (10초)
+const REGEN_STEP_MS = 333;     // 자동 회복 속도: 초당 3 (구급상자는 초당 10)
+const KNIFE_DMG = 100;         // 칼: 근접 한 방
+const NADES = () => ({ frag: 2, smoke: 1 }); // 목숨마다 수류탄 2, 연막탄 1
+const REWARDS = WEAPONS.REWARDS;
 const ARENA = 50;
 
 // 정적 파일 서버 (shooter.html)
@@ -97,10 +101,10 @@ function issueToken(key) {
 }
 function topList() {
   return Object.values(users).sort((a, b) => b.stats.kills - a.stats.kills).slice(0, 10)
-    .map(u => ({ name: u.name, level: levelOf(u.stats.xp), kills: u.stats.kills, deaths: u.stats.deaths, wins: u.stats.wins }));
+    .map(u => ({ name: u.name, level: levelOf(u.stats.xp), kills: u.stats.kills, deaths: u.stats.deaths, wins: u.stats.wins, title: (u.cos || NO_COS).title }));
 }
 // 터치 버튼 배치(계정에 저장): 알려진 버튼과 숫자 범위만 받아들임
-const TB_IDS = ['fire', 'jump', 'reload', 'swap', 'zoom', 'prone', 'joy', 'med'];
+const TB_IDS = ['fire', 'jump', 'reload', 'swap', 'zoom', 'prone', 'joy', 'med', 'nade', 'smoke', 'knife'];
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 function cleanLayout(d) {
   if (!d || typeof d !== 'object') return null;
@@ -116,6 +120,13 @@ function cleanLayout(d) {
   }
   const op = +d.tbOp;
   if (d.tbOp != null && Number.isFinite(op)) out.tbOp = clampN(op, 0.2, 1);
+  return out;
+}
+const NO_COS = { color: 0, skin: 0, title: 0 };
+const cosOf = p => (p.user && users[p.user] && users[p.user].cos) || NO_COS;
+function cleanCos(u, d) { // 레벨이 모자란 보상은 기본값으로
+  const lv = levelOf(u.stats.xp), out = {};
+  for (const k of ['color', 'skin', 'title']) { const i = Math.floor(+((d || {})[k])); const item = REWARDS[k][i]; out[k] = (item && lv >= item.lv) ? i : 0; }
   return out;
 }
 const statOf = c => (c.user && users[c.user]) ? users[c.user].stats : null;
@@ -134,7 +145,7 @@ function broadcastRooms() {
 function roomPayload(r) {
   return {
     t: 'room', id: r.id, name: r.name, mode: r.mode, map: r.map || 0, state: r.state, host: r.host, max: MAX_PLAYERS,
-    players: [...r.players.values()].map(p => ({ id: p.id, nick: p.nick, level: statOf(p) ? levelOf(statOf(p).xp) : 0 }))
+    players: [...r.players.values()].map(p => ({ id: p.id, nick: p.nick, level: statOf(p) ? levelOf(statOf(p).xp) : 0, title: cosOf(p).title }))
   };
 }
 function sendRoom(r) { inRoom(r, roomPayload(r)); broadcastRooms(); }
@@ -175,11 +186,11 @@ function startGame(r) {
   const duration = r.mode === 'team' ? TEAM_TIME_MS : 0;
   r.startAt = Date.now() + COUNTDOWN_MS;
   if (duration) r.timer = setTimeout(() => endGame(r), duration + COUNTDOWN_MS);
-  list.forEach(p => { Object.assign(p, { hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0 }); });
+  list.forEach(p => { Object.assign(p, { hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }); });
   r.players.forEach(p => {
     send(p, {
       t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: KILL_LIMIT[r.mode], duration, countdown: COUNTDOWN_MS,
-      players: [...r.players.values()].map(q => ({ id: q.id, nick: q.nick, team: q.team, x: q.sp.x, z: q.sp.z }))
+      players: [...r.players.values()].map(q => ({ id: q.id, nick: q.nick, team: q.team, x: q.sp.x, z: q.sp.z, cos: cosOf(q) }))
     });
   });
   broadcastRooms();
@@ -222,23 +233,28 @@ function endGame(r, reason) {
 
 // 피해 적용: 체력 감소 → (사망 시) 킬 처리, 전적, 종료 판정, 부활 예약
 function damage(r, c, v, dmg, hs) {
+  const self = c === v; // 자기 수류탄에 맞은 경우
   v.hp -= dmg; v.lastHurt = Date.now();
-  send(c, { t: 'hitconfirm', hs: !!hs, dmg });
+  if (!self) send(c, { t: 'hitconfirm', hs: !!hs, dmg });
   if (v.hp > 0) return inRoom(r, { t: 'hp', id: v.id, hp: v.hp, by: c.id });
-  v.hp = 0; v.alive = false; v.deaths++; c.kills++; v.healing = null; v.healUntil = 0;
+  v.hp = 0; v.alive = false; v.deaths++; v.healing = null; v.healUntil = 0; v.streak = 0;
+  if (!self) { // 자폭은 킬로 치지 않음
+    c.kills++; c.streak = (c.streak || 0) + 1;
+    if (c.streak % 5 === 0) c.air = (c.air || 0) + 1; // 5연속 처치마다 공습 1회
+    if (r.mode === 'team') r.teamKills[c.team]++;
+  }
   if (!r.practice) { // 훈련장은 전적에 반영하지 않음
-    const ks = statOf(c), vs = statOf(v);
+    const ks = self ? null : statOf(c), vs = statOf(v);
     if (ks) { ks.kills++; ks.xp += 100; if (hs) { ks.hs++; ks.xp += 25; } }
     if (vs) vs.deaths++;
     if (ks || vs) saveUsers();
   }
-  if (r.mode === 'team') r.teamKills[c.team]++;
-  inRoom(r, { t: 'kill', killer: c.id, victim: v.id, hs: !!hs, kills: c.kills, deaths: v.deaths, teamKills: r.teamKills });
+  inRoom(r, { t: 'kill', killer: c.id, victim: v.id, hs: !!hs, kills: c.kills, deaths: v.deaths, teamKills: r.teamKills, air: c.air || 0 });
   const limit = r.practice ? 0 : KILL_LIMIT[r.mode]; // 훈련장은 킬 제한 없음 (끝나지 않음)
   if (limit > 0 && (r.mode === 'team' ? Math.max(...r.teamKills) >= limit : c.kills >= limit)) return endGame(r);
   setTimeout(() => {
     if (r.state !== 'play' || !r.players.has(v.id)) return;
-    v.hp = 100; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS;
+    v.hp = 100; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS; v.nades = NADES();
     inRoom(r, { t: 'respawn', id: v.id, x: v.sp.x, z: v.sp.z, prot: SPAWN_PROTECT_MS });
   }, RESPAWN_MS);
 }
@@ -257,7 +273,7 @@ wss.on('connection', ws => {
     }
     const r = c.room;
     const authErr = msg => send(c, { t: 'autherr', msg });
-    const authOk = (key, token) => { c.user = key; c.guest = false; c.nick = users[key].name; send(c, { t: 'authed', user: users[key].name, token, stats: publicStats(users[key]), layout: users[key].layout || null }); };
+    const authOk = (key, token) => { c.user = key; c.guest = false; c.nick = users[key].name; send(c, { t: 'authed', user: users[key].name, token, stats: publicStats(users[key]), layout: users[key].layout || null, cos: users[key].cos || NO_COS }); };
     if (!c.user && !c.guest && (m.t === 'create' || m.t === 'join' || m.t === 'start' || m.t === 'practice')) return send(c, { t: 'err', msg: '먼저 로그인하거나 게스트로 입장하세요' });
     switch (m.t) {
       case 'register': case 'login': {
@@ -291,6 +307,11 @@ wss.on('connection', ws => {
         if (c.user && users[c.user] && m.token) { users[c.user].tokens = (users[c.user].tokens || []).filter(t => t !== m.token); tokens.delete(m.token); saveUsers(); }
         c.user = null; c.guest = false; send(c, { t: 'loggedout' }); break;
       case 'top': send(c, { t: 'top', list: topList() }); break;
+      case 'cos': { // 꾸미기 선택 저장 (레벨 보상)
+        if (!c.user || !users[c.user]) break;
+        users[c.user].cos = cleanCos(users[c.user], m); saveUsers();
+        send(c, { t: 'cos', cos: users[c.user].cos }); break;
+      }
       case 'layout': { // 터치 버튼 배치를 계정에 저장 (로그인 유저만)
         if (!c.user || !users[c.user]) break;
         const lay = cleanLayout(m.data);
@@ -318,9 +339,9 @@ wss.on('connection', ws => {
         const bot = { ws: { readyState: 0 }, id: nextId++, nick: '훈련 봇', bot: true, room: null, user: null, guest: true, loadout: [BOT_WEAPON] };
         const room = { id: nextRoomId++, name: '훈련장', mode: 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
         rooms.set(room.id, room); room.players.set(c.id, c); room.players.set(bot.id, bot); c.room = room;
-        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0 }));
+        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: 100, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }));
         send(c, { t: 'start', mode: 'ffa', practice: true, bot: bot.id, map: room.map, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
-          players: [c, bot].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z })) });
+          players: [c, bot].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z, cos: cosOf(q) })) });
         break;
       }
       case 'bothit': { // 훈련장 봇이 나를 맞힘 (봇의 움직임·시야·명중 판정은 클라이언트가 계산)
@@ -340,6 +361,46 @@ wss.on('connection', ws => {
       case 'state':
         if (!r || !(r.state === 'play' ? c.alive : Date.now() < (r.outroUntil || 0))) break; // 종료 연출 중에도 위치는 계속 전달
         c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0 }; break;
+      case 'throw': { // 수류탄·연막탄 던지기: 개수 확인 후 다른 사람들에게 궤적 전달
+        if (!r || r.state !== 'play' || !c.alive || Date.now() < (r.startAt || 0)) break;
+        const k = m.k === 'smoke' ? 'smoke' : 'frag';
+        const vec = a => Array.isArray(a) && a.length === 3 && a.every(n => typeof n === 'number' && Number.isFinite(n)) ? a : null;
+        const p = vec(m.p), v = vec(m.v);
+        if (!p || !v || !c.nades || c.nades[k] <= 0) break;
+        c.nades[k]--; if (k === 'frag') c.pendingBoom = (c.pendingBoom || 0) + 1;
+        r.players.forEach(q => { if (q !== c) send(q, { t: 'throw', id: c.id, k, p, v }); });
+        break;
+      }
+      case 'boom': { // 폭발 피해 (던진 사람의 브라우저가 거리·엄폐를 계산해서 보고). 던진 만큼만 인정
+        if (!r || r.state !== 'play' || !(c.pendingBoom > 0)) break;
+        c.pendingBoom--;
+        const hits = Array.isArray(m.hits) ? m.hits.slice(0, 8) : [], now = Date.now();
+        for (const h of hits) {
+          if (r.state !== 'play') break;
+          const v = r.players.get(h && h.id), dmg = Math.min(150, Math.max(1, Math.round(+(h && h.dmg) || 0)));
+          if (!v || !v.alive || now < (v.prot || 0)) continue;
+          if (v !== c && r.mode === 'team' && v.team === c.team) continue; // 아군 피해 없음 (자기 자신은 맞음)
+          damage(r, c, v, dmg, false);
+        }
+        break;
+      }
+      case 'air': { // 공습 요청 (5연속 처치 보상)
+        if (!r || r.state !== 'play' || !c.alive || !(c.air > 0)) break;
+        const x = +m.x, z = +m.z; if (!Number.isFinite(x) || !Number.isFinite(z)) break;
+        c.air--; c.pendingBoom = (c.pendingBoom || 0) + 5;
+        inRoom(r, { t: 'air', id: c.id, x: clampN(x, -48, 48), z: clampN(z, -48, 48), a: Math.random() * Math.PI });
+        break;
+      }
+      case 'melee': { // 칼
+        if (!r || r.state !== 'play' || !c.alive) break;
+        const v = r.players.get(m.target), now = Date.now();
+        if (!v || v === c || !v.alive || now < (r.startAt || 0) || now < (v.prot || 0) || now < (c.healUntil || 0)) break;
+        if (r.mode === 'team' && v.team === c.team) break;
+        if (now - (c.lastMelee || 0) < 700) break;
+        c.lastMelee = now;
+        if (c.state && v.state && Math.hypot(c.state.x - v.state.x, c.state.z - v.state.z) > 5) break; // 너무 멀면 무효
+        damage(r, c, v, KNIFE_DMG, false); break;
+      }
       case 'medkit': { // 구급상자: 체력 50 회복, 쿨타임 40초, 개수 무제한
         if (!r || r.state !== 'play' || !c.alive || c.hp >= 100 || c.healing) break;
         const now = Date.now();
@@ -390,7 +451,7 @@ setInterval(() => {
           p.healing.next += 1000; if (--p.healing.ticks <= 0) p.healing = null;
         }
       }
-      if (p.alive && p.hp < 100 && now - (p.lastHurt || 0) > REGEN_DELAY_MS) { p.hp = Math.min(100, p.hp + 1); send(p, { t: 'hp', id: p.id, hp: p.hp }); } // 초당 20 회복
+      if (p.alive && p.hp < 100 && now - (p.lastHurt || 0) > REGEN_DELAY_MS && now >= (p.nextRegen || 0)) { p.nextRegen = now + REGEN_STEP_MS; p.hp = Math.min(100, p.hp + 1); send(p, { t: 'hp', id: p.id, hp: p.hp }); } // 느린 자동 회복
     });
     inRoom(r, { t: 'states', s });
   });

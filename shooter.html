@@ -175,6 +175,19 @@
   #chbox{position:relative;height:84px;border-radius:10px;background:linear-gradient(#7fa9d6 0%,#b9cfe2 48%,#5f8656 52%,#4a6b4a 100%);margin:8px 0}
   .sw{width:26px;height:26px;border-radius:50%;padding:0;margin-left:6px;border:2px solid #0006}
   .sw.sel{outline:2px solid #ffd24a;outline-offset:2px}
+  #inv{right:24px;bottom:66px;font-size:15px;text-align:right;line-height:1.5}
+  body.touch #inv{right:8px;bottom:auto;top:64px;font-size:11px}
+  .tb.empty{filter:grayscale(1) brightness(.45)}
+  #tb-nade{right:280px;bottom:44px;width:54px;height:54px;font-size:20px}
+  #tb-smoke{right:280px;bottom:108px;width:54px;height:54px;font-size:20px}
+  #tb-knife{right:104px;bottom:192px;width:54px;height:54px;font-size:20px}
+  #tb-air{display:none!important;right:16px;top:118px;width:58px;height:58px;font-size:22px;background:#ffb02099}
+  body.touch #tb-air.rdy{display:flex!important}
+  #hud.edit #tb-air{display:none!important}
+  .cositem{display:inline-flex;align-items:center;gap:6px;margin:4px;padding:6px 10px;border-radius:8px;border:2px solid var(--line);background:#0d1526;cursor:pointer;font-size:13px}
+  .cositem.sel{border-color:#ffd24a;background:#2a2410}.cositem.lock{opacity:.45;cursor:not-allowed}
+  .cositem i{width:16px;height:16px;border-radius:50%;display:inline-block;border:1px solid #0008}
+  #cosbody h3{margin:12px 0 4px;font-size:15px;text-align:left}#cosbody{text-align:left}
   .t0{color:#ff7b7f}.t1{color:#7fb0ff}
 </style>
 </head>
@@ -196,6 +209,15 @@
   </div>
   <div id="conn" style="color:#8fa0bb;font-size:13px"></div>
   <button class="sm inst" style="display:none">📲 홈 화면에 추가</button>
+</div>
+
+<!-- 꾸미기 (레벨 보상) -->
+<div class="screen" id="s-cos">
+  <div class="card" style="width:min(560px,94vw)">
+    <h2>🎖 꾸미기 <small id="coslv" style="color:#9fb0cc;font-size:14px"></small></h2>
+    <div id="cosbody"></div>
+    <div class="row" style="margin-top:12px"><button class="pri" id="b-cosback">완료</button></div>
+  </div>
 </div>
 
 <!-- 랭킹 -->
@@ -230,7 +252,7 @@
   <h1>3D 슈팅 아레나</h1>
   <div class="card">
     <div id="prof"></div>
-    <div class="row" style="margin-bottom:14px"><button class="sm" id="b-top">🏆 랭킹</button><button class="sm" id="b-set">⚙️ 설정</button><button class="sm" id="b-logout">로그아웃</button></div>
+    <div class="row" style="margin-bottom:14px"><button class="sm" id="b-top">🏆 랭킹</button><button class="sm" id="b-cos">🎖 꾸미기</button><button class="sm" id="b-set">⚙️ 설정</button><button class="sm" id="b-logout">로그아웃</button></div>
     <div style="margin-bottom:14px" id="nickrow">닉네임 <input id="nick" maxlength="12" placeholder="닉네임"></div>
     <div style="margin-bottom:14px"><button id="b-load">🔫 총 선택: <span id="lsum"></span></button></div>
     <div class="row">
@@ -313,13 +335,13 @@
   <div class="h" id="kmsg"></div><div class="h" id="count"></div>
   <canvas id="mini" width="150" height="150"></canvas>
   <div class="h" id="dead"></div><div class="h" id="endmsg"></div>
-  <div class="h" id="med"></div><div class="h" id="healing"></div><div id="healfx"></div>
+  <div class="h" id="inv"></div><div class="h" id="med"></div><div class="h" id="healing"></div><div id="healfx"></div>
   <div id="tz"></div><div id="joybase"><div id="joyknob"></div></div>
   <div class="tb" id="tb-fire">발사</div><div class="tb" id="tb-jump">점프</div><div class="tb" id="tb-reload">재장전</div>
-  <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div>
+  <div class="tb" id="tb-swap">총 교체</div><div class="tb" id="tb-zoom">조준</div><div class="tb" id="tb-prone">엎드리기</div><div class="tb" id="tb-med">구급</div><div class="tb" id="tb-nade">💣</div><div class="tb" id="tb-smoke">💨</div><div class="tb" id="tb-knife">🔪</div><div class="tb" id="tb-air">✈</div>
   <div id="tb-exit">✕ 나가기</div>
   <div id="rot">화면을 가로로 돌려 주세요 📱</div>
-  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · C 구급상자<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div><button class="sm" id="b-quit" style="margin-top:14px">게임 나가기</button></div>
+  <div id="pause"><h2>일시정지</h2><div>클릭하면 계속합니다<br>WASD 이동 · Shift 달리기 · Space 점프<br>클릭 사격 · 우클릭 조준 · Z 엎드리기 · R 재장전 · C 구급상자<br>G 수류탄 · T 연막탄 · V 칼 · X 공습(5연속 처치 보상)<br><br>🎮 게임패드: 아무 버튼이나 누르면 계속 (Start = 일시정지)</div><button class="sm" id="b-quit" style="margin-top:14px">게임 나가기</button></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -337,7 +359,7 @@ nickEl.value=localStorage.getItem('nick')||'';
 const myNick=()=>{if(ME&&!ME.guest)return ME.user;const n=nickEl.value.trim()||'게스트';try{localStorage.setItem('nick',n)}catch{}return n};
 function setScreen(s){
   screen=s;
-  for(const k of ['login','top','set','menu','rooms','wait','result','loadout'])$('s-'+k).classList.toggle('on',k===s);
+  for(const k of ['login','top','set','cos','menu','rooms','wait','result','loadout'])$('s-'+k).classList.toggle('on',k===s);
   $('hud').classList.toggle('on',s==='game');
   if(s!=='game'&&document.pointerLockElement)document.exitPointerLock();
   updatePause();checkRot();
@@ -388,11 +410,15 @@ function onMsg(m){
   switch(m.t){
     case 'hello':myId=m.id;break;
     case 'err':showErr(m.msg);break;
-    case 'authed':ME={user:m.user,guest:!!m.guest,stats:m.stats||null};if(m.token){try{localStorage.setItem('token',m.token)}catch{}}$('lp').value='';$('lmsg').textContent='';renderProfile();syncLayout(m);if(screen==='login')setScreen('menu');break;
+    case 'authed':ME={user:m.user,guest:!!m.guest,stats:m.stats||null,cos:m.cos||{color:0,skin:0,title:0}};if(m.token){try{localStorage.setItem('token',m.token)}catch{}}$('lp').value='';$('lmsg').textContent='';renderProfile();syncLayout(m);if(screen==='login')setScreen('menu');break;
     case 'autherr':if(m.expired){try{localStorage.removeItem('token')}catch{}}else $('lmsg').textContent=m.msg;break;
     case 'loggedout':ME=null;setScreen('login');break;
-    case 'stats':if(ME&&!ME.guest){ME.stats=m.stats;renderProfile()}break;
-    case 'top':$('toplist').innerHTML=m.list.length?m.list.map((u,i)=>'<div class="pl"><span><b>'+(i+1)+'</b>'+esc(u.name)+' <small style="color:#9fb0cc">Lv.'+u.level+'</small></span><span>'+u.kills+'킬 · '+u.wins+'승</span></div>').join(''):'<div class="empty">아직 기록이 없어요</div>';break;
+    case 'stats':if(ME&&!ME.guest){const old=ME.stats?ME.stats.level:m.stats.level;ME.stats=m.stats;renderProfile();
+      if(m.stats.level>old){const nw=[];for(const k of ['color','skin','title'])REWARDS[k].forEach(it=>{if(it.lv>old&&it.lv<=m.stats.level)nw.push(it.n)});showErr('🎉 레벨 업! Lv.'+m.stats.level+(nw.length?' · 새 보상: '+nw.join(', '):''))}}break;
+    case 'cos':if(ME){ME.cos=m.cos;renderProfile();if(screen==='cos')renderCos()}break;
+    case 'throw':if(G)spawnNade(m.k,m.p,m.v,false);break;
+    case 'air':if(G)airStrike(m);break;
+    case 'top':$('toplist').innerHTML=m.list.length?m.list.map((u,i)=>'<div class="pl"><span><b>'+(i+1)+'</b>'+titleTag(u.title)+esc(u.name)+' <small style="color:#9fb0cc">Lv.'+u.level+'</small></span><span>'+u.kills+'킬 · '+u.wins+'승</span></div>').join(''):'<div class="empty">아직 기록이 없어요</div>';break;
     case 'rooms':if(screen==='rooms')renderRooms(m.rooms);break;
     case 'room':room=m;if(screen!=='game'&&screen!=='result')setScreen('wait');if(screen==='wait')renderWait();break;
     case 'start':beginGame(m);break;
@@ -425,16 +451,30 @@ function doAuth(){
 $('b-auth').onclick=doAuth;
 $('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth()});
 $('b-guest').onclick=()=>{if(!ws||ws.readyState!==1){$('lmsg').textContent='서버에 연결되지 않았어요';return}send({t:'guest',nick:nickEl.value.trim()})};
+const titleTag=i=>(i>0&&REWARDS.title[i])?'<small style="color:#ffd24a">['+REWARDS.title[i].n+']</small> ':'';
+const hex=v=>'#'+v.toString(16).padStart(6,'0');
+function renderCos(){ // 레벨 보상 선택 화면
+  const g=!ME||ME.guest,lv=g?0:ME.stats.level,cos=(ME&&ME.cos)||{color:0,skin:0,title:0};
+  $('coslv').textContent=g?'로그인하면 레벨 보상을 받을 수 있어요':'내 레벨 Lv.'+lv;
+  const sec=(k,title)=>'<h3>'+title+'</h3>'+REWARDS[k].map((it,i)=>{const lock=lv<it.lv;
+    return '<span class="cositem'+(cos[k]===i?' sel':'')+(lock?' lock':'')+'" data-k="'+k+'" data-i="'+i+'">'+(it.v?'<i style="background:'+hex(it.v)+'"></i>':'')+it.n+(lock?' 🔒Lv.'+it.lv:'')+'</span>'}).join('');
+  $('cosbody').innerHTML=sec('color','캐릭터 색 (개인전: 몸 전체 · 팀전: 팔)')+sec('skin','총 스킨')+sec('title','칭호 (대기실·랭킹·프로필에 표시)');
+  $('cosbody').querySelectorAll('.cositem').forEach(el=>el.onclick=()=>{
+    if(el.classList.contains('lock')){showErr(g?'로그인이 필요해요':'레벨이 부족해요');return}
+    send(Object.assign({t:'cos'},cos,{[el.dataset.k]:+el.dataset.i}));
+  });
+}
 function renderProfile(){
   const g=!ME||ME.guest,s=ME&&ME.stats;
   $('nickrow').style.display=g?'':'none';
   $('b-logout').textContent=g?'로그인 화면으로':'로그아웃';
   if(g||!s){$('prof').innerHTML='<span style="color:#9fb0cc">게스트로 플레이 중 · 전적이 저장되지 않아요</span>';return}
   const lo=300*(s.level-1)**2,hi=300*s.level**2,pct=Math.max(0,Math.min(100,(s.xp-lo)/(hi-lo)*100));
-  $('prof').innerHTML='👤 <b>'+esc(ME.user)+'</b> · Lv.'+s.level+'<br><small style="color:#9fb0cc">킬 '+s.kills+' · 데스 '+s.deaths+' · K/D '+(s.kills/(s.deaths||1)).toFixed(2)+' · 헤드샷 '+s.hs+' · '+s.games+'전 '+s.wins+'승</small>'
+  $('prof').innerHTML='👤 '+titleTag(ME.cos&&ME.cos.title)+'<b>'+esc(ME.user)+'</b> · Lv.'+s.level+'<br><small style="color:#9fb0cc">킬 '+s.kills+' · 데스 '+s.deaths+' · K/D '+(s.kills/(s.deaths||1)).toFixed(2)+' · 헤드샷 '+s.hs+' · '+s.games+'전 '+s.wins+'승</small>'
     +'<div class="xp"><div style="width:'+pct+'%"></div></div><small style="color:#9fb0cc">다음 레벨까지 '+(hi-s.xp)+' XP</small>';
 }
 $('b-logout').onclick=()=>{let t=null;try{t=localStorage.getItem('token');localStorage.removeItem('token')}catch{}send({t:'logout',token:t})};
+$('b-cos').onclick=()=>{renderCos();setScreen('cos')};$('b-cosback').onclick=()=>setScreen('menu');
 $('b-top').onclick=()=>{$('toplist').innerHTML='<div class="empty">불러오는 중...</div>';setScreen('top');send({t:'top'})};
 $('b-topback').onclick=()=>setScreen('menu');
 function syncSet(){
@@ -499,7 +539,7 @@ function renderRooms(list){
 function renderWait(){
   $('wname').textContent=room.name;
   $('wmode').textContent=room.mode==='ffa'?'개인전 · 10킬 먼저 달성하면 승리':'팀전 · 제한시간 3분, 팀 합산 킬이 많은 팀 승리';
-  $('plist').innerHTML=room.players.map(p=>'<div class="pl"><span>'+esc(p.nick)+(p.level?' <small style="color:#9fb0cc">Lv.'+p.level+'</small>':'')+(p.id===myId?' (나)':'')+'</span><span>'+(p.id===room.host?'👑 방장':'')+'</span></div>').join('');
+  $('plist').innerHTML=room.players.map(p=>'<div class="pl"><span>'+titleTag(p.title)+esc(p.nick)+(p.level?' <small style="color:#9fb0cc">Lv.'+p.level+'</small>':'')+(p.id===myId?' (나)':'')+'</span><span>'+(p.id===room.host?'👑 방장':'')+'</span></div>').join('');
   const host=room.host===myId,enough=room.players.length>=2;
   $('wmap').value=room.map||0;$('wmap').disabled=!host;$('wmaphint').textContent=host?'':'(방장만 바꿀 수 있어요)';
   $('b-start').style.display=host?'':'none';
@@ -925,7 +965,7 @@ function drawMini(){
   for(const id in G.players){
     const p=G.players[id];if(!p.alive)continue;
     const mate=G.mode==='team'&&p.team===G.me.team;
-    if(!mate&&!(p.firedAt&&now-p.firedAt<2000))continue; // 적은 총을 쏜 직후 2초만 표시
+    if(!mate&&!(p.firedAt&&now-p.firedAt<2000)&&!(G.radarUntil>now))continue; // 적은 총을 쏜 직후 2초만 표시 (레이더 보상 중에는 항상)
     mctx.fillStyle=mate?'#4ade80':'#ff4040';mctx.beginPath();mctx.arc(X(p.g.position.x),X(p.g.position.z),3.5,0,7);mctx.fill();
   }
   const fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),px=X(P.x),pz=X(P.z); // 나: 보는 방향 화살표
@@ -1015,6 +1055,117 @@ function deathFx(v,m){ // 맞은 방향으로 밀려나며 쓰러지고, 헤드�
   }
 }
 
+// ---- 수류탄 · 연막탄 (던지면 튕기다가 터짐. 궤적은 모든 화면에서 같은 계산으로 재현) ----
+const nades=[],smokes=[],airs=[],nadeGeo=new THREE.SphereGeometry(0.11,8,6),smokeGeo=new THREE.SphereGeometry(1,10,8);
+let myNades={frag:2,smoke:1},shakeT=0,meleeCool=0;
+function notice(text,ms){const b=$('banner');b.textContent=text;b.style.opacity=1;clearTimeout(notice.t);notice.t=setTimeout(()=>b.style.opacity=0,ms||2200)}
+function spawnNade(k,p,v,mine){
+  const m=new THREE.Mesh(nadeGeo,new THREE.MeshLambertMaterial({color:k==='smoke'?0xaab0b6:0x3a4a2a}));m.position.set(p[0],p[1],p[2]);scene.add(m);
+  nades.push({m,k,v:new THREE.Vector3(v[0],v[1],v[2]),t:k==='smoke'?1.6:2.2,mine,acc:0});
+}
+function throwNade(k){
+  if(!G||!P.alive||G.over||medBusy()||performance.now()<G.startAt||myNades[k]<=0)return;
+  myNades[k]--;const d=new THREE.Vector3();camera.getWorldDirection(d);
+  const p=[P.x+d.x*0.6,camera.position.y-0.1+d.y*0.6,P.z+d.z*0.6],v=[d.x*17,d.y*17+4.5,d.z*17];
+  spawnNade(k,p,v,true);send({t:'throw',k,p,v});beep(240,0.08,'triangle',0.05);gun.position.z=-0.3;hud();
+}
+function stepNade(n,s){ // 고정 간격 물리: 중력, 바닥·벽·상자에 튕김
+  n.v.y-=18*s;const pos=n.m.position,px=pos.x,py=pos.y,pz=pos.z,R=0.12;pos.addScaledVector(n.v,s);
+  if(pos.y<R){pos.y=R;n.v.y*=-0.35;n.v.x*=0.6;n.v.z*=0.6}
+  const L=49.4;if(Math.abs(pos.x)>L){pos.x=Math.sign(pos.x)*L;n.v.x*=-0.4}if(Math.abs(pos.z)>L){pos.z=Math.sign(pos.z)*L;n.v.z*=-0.4}
+  for(const b of boxes){
+    if(!(pos.x>b.minx-R&&pos.x<b.maxx+R&&pos.y>b.miny-R&&pos.y<b.maxy+R&&pos.z>b.minz-R&&pos.z<b.maxz+R))continue;
+    if(py>=b.maxy+R){pos.y=b.maxy+R;n.v.y*=-0.35;n.v.x*=0.6;n.v.z*=0.6}           // 위에 떨어짐
+    else if(px<=b.minx-R||px>=b.maxx+R){pos.x=px;n.v.x*=-0.4}                        // 옆면
+    else if(pz<=b.minz-R||pz>=b.maxz+R){pos.z=pz;n.v.z*=-0.4}
+    else if(py<=b.miny-R){pos.y=py;n.v.y*=-0.3}                                      // 아랫면
+    else{pos.set(px,py,pz);n.v.multiplyScalar(-0.3)}
+    break;
+  }
+}
+function boomSound(vol){
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();if(!noiseBuf)gunSound(100,0.0001);
+    const t=ac.currentTime,v=Math.max(0.0002,0.9*SET.vol*vol),src=ac.createBufferSource();src.buffer=noiseBuf;src.loop=true;
+    const f=ac.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(1400,t);f.frequency.exponentialRampToValueAtTime(90,t+0.7);
+    const g=ac.createGain();g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.8);src.connect(f).connect(g).connect(ac.destination);src.start(t);src.stop(t+0.85);
+    const o=ac.createOscillator(),og=ac.createGain();o.frequency.setValueAtTime(110,t);o.frequency.exponentialRampToValueAtTime(30,t+0.4);og.gain.setValueAtTime(v,t);og.gain.exponentialRampToValueAtTime(0.0001,t+0.45);o.connect(og).connect(ac.destination);o.start(t);o.stop(t+0.5);
+  }catch{}
+}
+function boomHits(pos){ // 폭발 피해: 가까울수록 크고, 엄폐물 뒤는 크게 줄어듦
+  const hits=[],R=7.5,src=new THREE.Vector3(pos.x,pos.y+0.4,pos.z);
+  const test=(id,tx,ty,tz)=>{
+    const to=new THREE.Vector3(tx,ty,tz),d=to.distanceTo(src);if(d>R)return;
+    botRay.set(src,to.clone().sub(src).normalize());botRay.far=Math.max(0.01,d-0.3);
+    let dmg=130*Math.pow(1-d/R,1.1);if(botRay.intersectObjects(solids,false).length)dmg*=0.2;
+    if(dmg>=2)hits.push({id,dmg:Math.round(dmg)});
+  };
+  for(const id in G.players){const p=G.players[id];if(p.alive)test(+id,p.g.position.x,p.g.position.y+1.0,p.g.position.z)}
+  if(P.alive)test(myId,P.x,P.y-0.6,P.z);
+  return hits;
+}
+function explodeAt(pos,mine){
+  const c=pos.clone();c.y+=0.3;flashAt(c,0xffc04a,3.4);burst(c,0xffa030,26,9,1.6);burst(c,0x555555,18,5,2.2);
+  const d=Math.hypot(pos.x-P.x,pos.z-P.z);boomSound(Math.max(0.12,1-d/70));if(d<18)shakeT=Math.max(shakeT,0.45*(1-d/18));
+  if(pos.y<0.6){const m=new THREE.Mesh(dGeo,new THREE.MeshBasicMaterial({color:0x151515,transparent:true,opacity:0.7,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2}));m.rotation.x=-Math.PI/2;m.position.set(pos.x,0.045,pos.z);m.scale.set(2.4,2.4,1);scene.add(m);decals.push({m,t:14})} // 그을음
+  if(mine&&G)send({t:'boom',hits:boomHits(pos)});
+}
+function smokeAt(pos){ // 연막: 12초 동안 시야를 가림 (봇의 시야도 가림)
+  const g=new THREE.Group(),puffs=[];
+  for(let i=0;i<16;i++){const m=new THREE.Mesh(smokeGeo,new THREE.MeshBasicMaterial({color:i%2?0xc4c8cc:0xa9adb2,transparent:true,opacity:0,depthWrite:false}));
+    const a=rnd(0,6.283),r=rnd(0,3.6);m.position.set(pos.x+Math.cos(a)*r,Math.max(0.6,pos.y)+rnd(0,2.6),pos.z+Math.sin(a)*r);m.userData.s=rnd(1.6,2.7);m.scale.setScalar(0.2);g.add(m);puffs.push(m)}
+  scene.add(g);smokes.push({g,puffs,t:13,c:new THREE.Vector3(pos.x,1.5,pos.z)});beep(180,0.3,'sawtooth',0.03);
+}
+function smokeBlocks(ax,az,bx2,bz2){ // 두 점 사이에 연막이 있는지 (봇 시야용)
+  for(const s of smokes){if(s.t<1||s.t>12.4)continue;const dx=bx2-ax,dz=bz2-az,l2=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((s.c.x-ax)*dx+(s.c.z-az)*dz)/l2));if(Math.hypot(ax+dx*t-s.c.x,az+dz*t-s.c.z)<4)return true}
+  return false;
+}
+function airStrike(m){ // 공습: 지점에 경고 표시 → 2초 뒤부터 일렬로 5발
+  for(let i=-2;i<=2;i++){
+    const x=m.x+Math.cos(m.a)*i*4.2,z=m.z+Math.sin(m.a)*i*4.2;
+    const ring=new THREE.Mesh(new THREE.RingGeometry(2.2,2.7,24),new THREE.MeshBasicMaterial({color:0xff2020,transparent:true,opacity:0.9,depthWrite:false,side:THREE.DoubleSide}));ring.rotation.x=-Math.PI/2;ring.position.set(x,0.06,z);scene.add(ring);
+    airs.push({ring,x,z,t:2+(i+2)*0.28,mine:m.id===myId});
+  }
+  for(let i=0;i<4;i++)setTimeout(()=>beep(880,0.12,'square',0.05),i*260); // 경보
+  notice(m.id===myId?'✈ 공습 요청 완료!':'⚠ 공습 경보! 붉은 원에서 벗어나세요',2600);
+}
+function callAir(){
+  if(!G||!P.alive||G.over||!(G.air>0))return;
+  ray.setFromCamera({x:0,y:0},camera);const hit=ray.intersectObjects(solids,false)[0];let pt=null;
+  if(hit&&hit.distance<110)pt=hit.point;else if(ray.ray.direction.y<-0.02){const t=-ray.ray.origin.y/ray.ray.direction.y;if(t<110)pt=ray.ray.at(t,new THREE.Vector3())}
+  if(!pt){notice('공습할 지점(바닥이나 벽)을 조준하세요');return}
+  G.air--;send({t:'air',x:pt.x,z:pt.z});hud();
+}
+function updateThrowables(dt){
+  for(let i=nades.length-1;i>=0;i--){
+    const n=nades[i];n.acc+=dt;while(n.acc>=1/120&&n.t>0){n.acc-=1/120;stepNade(n,1/120);n.t-=1/120}
+    n.m.rotation.x+=dt*9;
+    if(n.t<=0){scene.remove(n.m);n.m.material.dispose();nades.splice(i,1);if(n.k==='smoke')smokeAt(n.m.position);else explodeAt(n.m.position,n.mine)}
+  }
+  for(let i=smokes.length-1;i>=0;i--){
+    const s=smokes[i];s.t-=dt;const grow=Math.min(1,(13-s.t)/1.5),fade=Math.min(1,s.t/3);
+    for(const p of s.puffs){p.scale.setScalar(0.2+p.userData.s*grow);p.material.opacity=0.72*grow*fade;p.position.y+=dt*0.05}
+    if(s.t<=0){scene.remove(s.g);s.puffs.forEach(p=>p.material.dispose());smokes.splice(i,1)}
+  }
+  for(let i=airs.length-1;i>=0;i--){
+    const a=airs[i];a.t-=dt;a.ring.material.opacity=0.45+0.45*Math.sin(performance.now()/70);
+    if(a.t<=0){scene.remove(a.ring);a.ring.geometry.dispose();a.ring.material.dispose();airs.splice(i,1);explodeAt(new THREE.Vector3(a.x,0.15,a.z),a.mine)}
+  }
+}
+function clearThrowables(){
+  for(const n of nades)scene.remove(n.m);for(const s of smokes)scene.remove(s.g);for(const a of airs)scene.remove(a.ring);
+  nades.length=smokes.length=airs.length=0;shakeT=0;
+}
+// ---- 칼: 바로 앞(2.4m)의 적을 한 방에 ----
+function melee(){
+  if(!G||!P.alive||G.over||medBusy()||performance.now()<G.startAt||performance.now()<meleeCool)return;
+  meleeCool=performance.now()+800;gun.rotation.y=1.2;gun.position.z=-0.8;beep(760,0.06,'sawtooth',0.045);
+  const t=[];for(const id in G.players){const p=G.players[id];if(p.alive)t.push(...p.hit)}
+  for(const ox of [0,-0.14,0.14]){ // 가운데와 좌우로 조금 넓게 판정
+    ray.setFromCamera({x:ox,y:0},camera);ray.far=2.4;const hit=ray.intersectObjects(t.concat(solids),false)[0];ray.far=Infinity;
+    if(hit&&hit.object.userData.pid){send({t:'melee',target:hit.object.userData.pid});hitFx(hit.point.clone(),true,false,ray.ray.direction.clone());break}
+  }
+}
+
 // ---- 훈련장 봇: 돌아다니다가 내가 보이면 멈칫하고 쏜다. 장애물 뒤에 숨으면 못 쏜다 ----
 const botRay=new THREE.Raycaster(),clampV=(v,a,b)=>Math.max(a,Math.min(b,v));
 function botAI(dt){
@@ -1026,7 +1177,7 @@ function botAI(dt){
   const dx=P.x-b.tx,dz=P.z-b.tz,dist=Math.hypot(dx,dz);let see=false;
   if(P.alive&&dist<70){ // 시야: 봇 머리 → 내 가슴 사이에 장애물이 없어야 함
     const from=new THREE.Vector3(b.tx,1.6,b.tz),dir=new THREE.Vector3(P.x,P.y-0.4-(P.prone?0.9:0),P.z).sub(from),L=dir.length();
-    botRay.set(from,dir.normalize());botRay.far=L;see=botRay.intersectObjects(solids,false).length===0;
+    botRay.set(from,dir.normalize());botRay.far=L;see=botRay.intersectObjects(solids,false).length===0&&!smokeBlocks(b.tx,b.tz,P.x,P.z);
   }
   // 이동: 목표 지점으로 걷다가 도착하거나 막히면 새 목표 (안 보이면 내 쪽으로 다가옴)
   ai.wt-=dt;const tx=ai.wx-b.tx,tz=ai.wz-b.tz,td=Math.hypot(tx,tz);
@@ -1057,7 +1208,8 @@ function botAI(dt){
 }
 
 function makePlayer(p){
-  const col=p.team>=0?TCOL[p.team]:new THREE.Color().setHSL((p.id*0.37)%1,0.65,0.5).getHex();
+  const cc=p.cos&&p.cos.color>0&&REWARDS.color[p.cos.color]?REWARDS.color[p.cos.color].v:0,sk=p.cos&&p.cos.skin>0&&REWARDS.skin[p.cos.skin]?REWARDS.skin[p.cos.skin].v:0x1b1b1b;
+  const col=p.team>=0?TCOL[p.team]:(cc||new THREE.Color().setHSL((p.id*0.37)%1,0.65,0.5).getHex()),armCol=cc||col; // 팀전에서는 팔 색으로 꾸미기 표시
   const g=new THREE.Group();
   const M=c=>new THREE.MeshLambertMaterial({color:c}),dark=0x2b2f38;
   const body=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.42),M(col));body.position.y=1.2;body.castShadow=true;
@@ -1065,9 +1217,9 @@ function makePlayer(p){
   const helmet=new THREE.Mesh(new THREE.SphereGeometry(0.31,14,8,0,Math.PI*2,0,Math.PI/2),M(col));helmet.position.y=1.9;helmet.castShadow=true;
   const limb=(w,h2,d,c,x,y)=>{const piv=new THREE.Group();piv.position.set(x,y,0);const m=new THREE.Mesh(new THREE.BoxGeometry(w,h2,d),M(c));m.position.y=-h2/2;m.castShadow=true;piv.add(m);piv.mesh=m;return piv}; // 관절(피벗)에서 흔들리는 팔다리
   const legL=limb(0.3,0.8,0.34,dark,-0.2,0.8),legR=limb(0.3,0.8,0.34,dark,0.2,0.8);
-  const armL=limb(0.2,0.7,0.2,col,-0.5,1.55),armR=limb(0.2,0.7,0.2,col,0.5,1.55);
+  const armL=limb(0.2,0.7,0.2,armCol,-0.5,1.55),armR=limb(0.2,0.7,0.2,armCol,0.5,1.55);
   armL.rotation.set(-1.2,0,-0.5);armR.rotation.set(-1.35,0,0.1); // 총을 든 자세
-  const gn=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.13,0.75),M(0x1b1b1b));gn.position.set(0.3,1.38,0.6);
+  const gn=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.13,0.75),M(sk));gn.position.set(0.3,1.38,0.6);
   const pose=new THREE.Group();pose.add(body,head,helmet,legL,legR,armL,armR,gn);g.add(pose);
   const hit=[body,head,helmet,legL.mesh,legR.mesh]; // 총알 판정 부위
   hit.forEach(m=>m.userData.pid=p.id);head.userData.head=helmet.userData.head=true;
@@ -1080,7 +1232,7 @@ function beginGame(m){
   endLocalGame();
   loadMap(m.map||0); // 방에서 고른 맵
   G={mode:m.mode,limit:m.limit,startAt:performance.now()+(m.countdown||0),endsAt:m.duration?performance.now()+m.duration+(m.countdown||0):0,players:{},teamKills:[0,0],feed:[],streak:0};
-  G.practice=!!m.practice;G.botId=m.bot||0;G.ai=null;
+  G.practice=!!m.practice;G.botId=m.bot||0;G.ai=null;G.air=0;G.radarUntil=0;
   for(const p of m.players)if(p.id!==myId)G.players[p.id]=makePlayer(p);
   const me=m.players.find(p=>p.id===myId);
   medReadyAt=0;medBusyUntil=0;
@@ -1092,10 +1244,10 @@ function beginGame(m){
   b.style.opacity=1;setTimeout(()=>b.style.opacity=0,3500);
   renderSB();renderTop();hud();
 }
-function endLocalGame(){clearDirs();if(G&&G.over&&G.over.mine)scene.remove(G.over.target.g);$('hud').classList.remove('over','win');if(G){for(const id in G.players)scene.remove(G.players[id].g);G=null}P.alive=false}
+function endLocalGame(){clearDirs();clearThrowables();if(G&&G.over&&G.over.mine)scene.remove(G.over.target.g);$('hud').classList.remove('over','win');if(G){for(const id in G.players)scene.remove(G.players[id].g);G=null}P.alive=false}
 function respawnLocal(x,z){
   Object.assign(P,{x,z,y:1.7,vy:0,hp:100,reload:0,alive:true,prone:false,pl:0,noJump:false,rec:0,yaw:Math.atan2(-x,-z)+Math.PI,pitch:0});
-  P.w=LOADOUT.map(id=>({id,ammo:WEAPONS[id].mag}));P.cur=0;applyGunModel();
+  P.w=LOADOUT.map(id=>({id,ammo:WEAPONS[id].mag}));P.cur=0;applyGunModel();myNades={frag:2,smoke:1};
   for(let i=0;i<4;i++)movePlayer(P.x,P.z,0);camY=P.y;
   $('dead').style.display='none';hud();
 }
@@ -1141,7 +1293,13 @@ function onKill(m){
   const k=nameOf(m.killer),v=nameOf(m.victim);if(!k||!v)return;
   k.kills=m.kills;v.deaths=m.deaths;G.teamKills=m.teamKills;
   if(m.victim!==myId&&v.g)bloodSpray(chestPos(v),m.hs?75:58,m.hs); // 처치 시 크게 튐
-  if(m.killer===myId){G.streak++;killMsg(m.hs);killFx(m.hs);hitMarker(m.hs,true);setTimeout(()=>{const e=document.querySelector('.dn:last-child');if(e)e.classList.add('kill')},0)}
+  if(m.killer===myId&&m.victim!==myId){
+    G.streak++;
+    if(G.streak===3){G.radarUntil=performance.now()+12000;setTimeout(()=>notice('📡 3연속 처치! 12초 동안 미니맵에 적이 보입니다',2600),900)} // 보상: 레이더
+    if((m.air||0)>G.air)setTimeout(()=>notice('✈ 5연속 처치! 공습 사용 가능 ('+(freeMode?'✈ 버튼':'X 키')+')',3000),900);                       // 보상: 공습
+    G.air=m.air||0;hud();
+  }
+  if(m.killer===myId&&m.victim!==myId){killMsg(m.hs);killFx(m.hs);hitMarker(m.hs,true);setTimeout(()=>{const e=document.querySelector('.dn:last-child');if(e)e.classList.add('kill')},0)}
   const f=$('feed');const d=document.createElement('div');
   const c=t=>t>=0?' class="t'+t+'"':'';
   const lab=(p,id)=>id===myId?'나':(p.team>=0?TEAM[p.team]+' 팀':'상대'); // 게임 중에는 닉네임 대신 표시
@@ -1162,7 +1320,7 @@ function onEnd(m){ // 경기 종료: 가운데 "경기 종료" + 1등을 3초간
   if(!G||m.reason||G.over||m.winnerId==null){showResult(m);return}
   const mine=m.winnerId===myId;let target;
   if(mine){ // 내가 1등: 내 캐릭터를 만들어 3인칭으로 보여주고, 3초 동안 계속 움직일 수 있음
-    target=makePlayer({id:-1,nick:'',team:G.me.team,x:P.x,z:P.z});if(!P.alive){P.alive=true;P.hp=100}
+    target=makePlayer({id:-1,nick:'',team:G.me.team,x:P.x,z:P.z,cos:ME&&ME.cos});if(!P.alive){P.alive=true;P.hp=100}
   }else{
     target=G.players[m.winnerId];if(!target){showResult(m);return}
     target.alive=true;target.deadT=0;target.g.visible=true;target.protUntil=0;if(target.helmet)target.helmet.visible=true;P.alive=false;
@@ -1188,6 +1346,11 @@ function hud(){
   $('hpfill').style.background=P.hp>60?'#3ecf6e':P.hp>30?'#e6b93c':'#e5484d';
   $('hpn').textContent=Math.max(0,Math.ceil(P.hp));
   $('low').style.opacity=(P.alive&&P.hp<40)?(40-P.hp)/40*0.9:0; // 체력이 낮으면 화면 가장자리가 붉어짐
+  { // 보유 장비: 수류탄, 연막탄, 칼, (보상) 공습
+    const pc=!freeMode,air=G&&G.air>0;
+    $('inv').innerHTML='💣 '+myNades.frag+(pc?' <small>[G]</small>':'')+' · 💨 '+myNades.smoke+(pc?' <small>[T]</small>':'')+' · 🔪'+(pc?' <small>[V]</small>':'')+(air?'<br><span style="color:#ffd24a">✈ 공습 '+G.air+(pc?' <small>[X]</small>':'')+'</span>':'');
+    $('tb-nade').classList.toggle('empty',myNades.frag<=0);$('tb-smoke').classList.toggle('empty',myNades.smoke<=0);$('tb-air').classList.toggle('rdy',!!air);
+  }
   if(!P.w.length)return;
   const s=P.w[P.cur],W=CW();
   $('ammo').textContent=P.reload>0?'재장전...':s.ammo+' / '+W.mag;
@@ -1197,7 +1360,8 @@ function applyGunModel(){
   const W=CW();while(gun.children.length)gun.remove(gun.children[0]);
   const M=c=>new THREE.MeshLambertMaterial({color:c}),bx=(w,h2,d,x,y,z,c)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h2,d),M(c));m.position.set(x,y,z);gun.add(m);return m};
   const L=W.len,dark=0x161616,wood=0x5a3a22;
-  bx(0.07,0.1,L*0.6,0,0,0,W.color);                                   // 몸통
+  const sk=ME&&ME.cos&&ME.cos.skin>0&&REWARDS.skin[ME.cos.skin]?REWARDS.skin[ME.cos.skin].v:W.color; // 총 스킨 (레벨 보상)
+  bx(0.07,0.1,L*0.6,0,0,0,sk);                                   // 몸통
   bx(0.034,0.034,L*0.55,0,0.02,-L*0.52,dark);                          // 총열
   bx(0.05,0.14,0.07,0,-0.11,0.1,dark);                                 // 손잡이
   if(W.mag>7)bx(0.045,0.17,0.06,0,-0.13,-0.05,0x2a2a2a);               // 탄창
@@ -1306,7 +1470,7 @@ function playing(){return locked()||freeMode||padMode}
 function updatePause(){$('pause').style.display=(screen==='game'&&!playing())?'flex':'none'}
 $('pause').onclick=()=>{padMode=false;canvas.requestPointerLock()};
 document.addEventListener('pointerlockchange',updatePause);
-addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='KeyR')reload();if(e.code==='KeyZ')toggleProne();if(e.code==='KeyC')useMed();if(e.code==='Digit1')switchTo(0);if(e.code==='Digit2')switchTo(1)});
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='KeyR')reload();if(e.code==='KeyZ')toggleProne();if(e.code==='KeyC')useMed();if(e.code==='KeyG')throwNade('frag');if(e.code==='KeyT')throwNade('smoke');if(e.code==='KeyV')melee();if(e.code==='KeyX')callAir();if(e.code==='Digit1')switchTo(0);if(e.code==='Digit2')switchTo(1)});
 addEventListener('keyup',e=>keys[e.code]=false);
 addEventListener('mousedown',e=>{
   if(e.button===0&&screen==='game'&&playing()&&!freeMode)shoot(); // 연사 없음: 클릭 1번 = 1발
@@ -1408,6 +1572,7 @@ function loop(){
     // 위치 전송 (20Hz)
     sendT-=dt;if(sendT<=0&&P.alive){sendT=0.05;send({t:'state',x:P.x,y:P.y,z:P.z,yaw:P.yaw+Math.PI,pitch:P.pitch,pr:P.prone?1:0})}
     {const ty=P.alive?P.y:0.5;camY+=(ty-camY)*Math.min(1,dt*25);if(Math.abs(ty-camY)>1.5)camY=ty;camera.position.set(P.x,camY-(P.alive?1.25*P.pl:0),P.z);}camera.rotation.set(P.pitch,P.yaw,0,'YXZ');
+    if(shakeT>0){shakeT-=dt;const k=Math.max(0,shakeT)*0.35;camera.position.x+=rnd(-k,k);camera.position.y+=rnd(-k,k);camera.rotation.z=rnd(-k,k)*0.15} // 폭발 흔들림
     gun.visible=P.alive&&!(zoomed()&&CW().zoom>=2.5);
     const tf=zoomed()?SET.fov/AZ():SET.fov+(P.sprinting?6:0); // 달리면 시야가 살짝 넓어짐
     if(Math.abs(camera.fov-tf)>0.1){camera.fov+=(tf-camera.fov)*Math.min(1,dt*18);camera.updateProjectionMatrix()}
@@ -1435,10 +1600,10 @@ function loop(){
    const mv=(P.alive&&P.onGround&&P.mv)?P.mv:0,rl=(P.reload>0||medBusy())?1:0;bobT+=dt*(6+mv*5); // 걸을 때 흔들림, 재장전 시 총을 내림
    const bx=Math.cos(bobT)*0.012*mv*(ads?0.2:1),by=Math.abs(Math.sin(bobT))*0.014*mv*(ads?0.2:1);
    gun.position.x+=((ads?0:0.28)+bx-gun.position.x)*Math.min(1,dt*18);gun.position.y+=((ads?-0.17:-0.25)-by-rl*0.12-gun.position.y)*Math.min(1,dt*18);
-   gun.rotation.x+=((rl?-0.7:0)-gun.rotation.x)*Math.min(1,dt*10);gun.rotation.z+=((rl?0.4:0)-gun.rotation.z)*Math.min(1,dt*10);}
+   gun.rotation.x+=((rl?-0.7:0)-gun.rotation.x)*Math.min(1,dt*10);gun.rotation.z+=((rl?0.4:0)-gun.rotation.z)*Math.min(1,dt*10);gun.rotation.y+=(0-gun.rotation.y)*Math.min(1,dt*9);}
   flashT-=dt;flash.intensity=flashT>0?2:0;
   for(let i=tracers.length-1;i>=0;i--){tracers[i].t-=dt;if(tracers[i].t<=0){scene.remove(tracers[i].l);tracers.splice(i,1)}}
-  updateParts(dt);
+  updateParts(dt);updateThrowables(dt);
   renderer.render(scene,camera);
 }
 function update(dt){
@@ -1517,6 +1682,7 @@ tbtn('tb-swap',()=>switchTo(P.cur===0?1:0));
 $('wbar').addEventListener('touchstart',e=>{const s=e.target.closest('span[data-i]');if(s){e.preventDefault();switchTo(+s.dataset.i)}},{passive:false});
 tbtn('tb-prone',()=>toggleProne());
 tbtn('tb-med',()=>useMed());
+tbtn('tb-nade',()=>throwNade('frag'));tbtn('tb-smoke',()=>throwNade('smoke'));tbtn('tb-knife',()=>melee());tbtn('tb-air',()=>callAir());
 tbtn('tb-zoom',()=>{touchZoom=!touchZoom;$('tb-zoom').classList.toggle('lock',touchZoom)});
 
 // ================= 게임패드 (Xbox/PS 표준 배치) =================
@@ -1537,11 +1703,15 @@ function pollPad(dt){
   if(P.alive&&P.w.length){
     const k=3.2*SET.sens*dt/(zoomed()?AZ():1); // 스틱을 끝까지 밀수록 빠르게(곡선)
     P.yaw-=Math.sign(rx)*rx*rx*k;P.pitch=Math.max(-1.5,Math.min(1.5,P.pitch-Math.sign(ry)*ry*ry*k));
-    if(pr(7)||pr(5))shoot(); // 연사 없음: 누를 때마다 1발
+    if(pr(7))shoot();          // RT: 발사 (누를 때마다 1발)
+    if(pr(5))throwNade('frag'); // RB: 수류탄
+    if(pr(15))throwNade('smoke');// 방향키 오른쪽: 연막탄
+    if(pr(11))melee();          // R3(오른쪽 스틱 누르기): 칼
+    if(pr(12))callAir();        // 방향키 위: 공습
     if(pr(2))reload();
     if(pr(1))toggleProne();
     if(pr(14))useMed(); // 방향키 왼쪽: 구급상자
-    if(pr(3)||pr(12)||pr(13))switchTo(P.cur===0?1:0);
+    if(pr(3)||pr(13))switchTo(P.cur===0?1:0);
   }
   if(pr(9)&&!freeMode){padMode=false;padZoom=false;updatePause()}
   padPrev=now;
@@ -1549,7 +1719,7 @@ function pollPad(dt){
 
 loop();
 // ---- 터치 버튼 배치 사용자화 (위치 %, 크기 px, 투명도 → 설정에 저장) ----
-const TB_IDS=['fire','jump','reload','swap','zoom','prone','joy','med'];let editing=false,teSel=null;
+const TB_IDS=['fire','jump','reload','swap','zoom','prone','joy','med','nade','smoke','knife'];let editing=false,teSel=null;
 const tbEl=id=>id==='joy'?$('joybase'):$('tb-'+id);
 const saveSet=()=>{try{localStorage.setItem('settings',JSON.stringify(SET))}catch{}};
 function applyTouchLayout(){

@@ -94,6 +94,19 @@
     'Remington M700': 0.06, 'M110 SASS': 0.035, 'Barrett M82A1': 0.1, 'AWM': 0.07,
     'M249': 0.022, 'RPK': 0.026, 'M60': 0.034, 'Dragunov SVD': 0.03, 'Barnett Ghost 410': 0.015 };
   L.forEach(w => { if (w.recoil == null) w.recoil = R[w.name] || 0.02; });
+  // 레벨 보상: lv 이상이면 선택 가능. 0번은 항상 기본값
+  L.REWARDS = {
+    color: [ // 캐릭터 색 (개인전: 몸 전체 / 팀전: 팔)
+      { n: '기본', lv: 1, v: 0 }, { n: '올리브', lv: 2, v: 0x6b8e23 }, { n: '네이비', lv: 3, v: 0x1f3a93 }, { n: '크림슨', lv: 5, v: 0xc0392b },
+      { n: '퍼플', lv: 7, v: 0x8e44ad }, { n: '블랙', lv: 10, v: 0x222222 }, { n: '화이트', lv: 12, v: 0xf2f2f2 }, { n: '골드', lv: 15, v: 0xd4af37 }],
+    skin: [ // 총 스킨
+      { n: '기본', lv: 1, v: 0 }, { n: '사막', lv: 2, v: 0xc2a878 }, { n: '숲', lv: 4, v: 0x4a6b3a }, { n: '블루', lv: 6, v: 0x2f62b8 },
+      { n: '레드', lv: 8, v: 0xb03030 }, { n: '크롬', lv: 12, v: 0xcfd4da }, { n: '골드', lv: 20, v: 0xd4af37 }],
+    title: [ // 칭호 (대기실, 랭킹, 프로필에 표시)
+      { n: '없음', lv: 1 }, { n: '신병', lv: 2 }, { n: '사수', lv: 3 }, { n: '정예', lv: 5 }, { n: '베테랑', lv: 8 },
+      { n: '명사수', lv: 12 }, { n: '전설', lv: 16 }, { n: '전쟁의 신', lv: 25 }],
+  };
+  g.REWARDS = L.REWARDS;
   g.WEAPONS = L;
   if (typeof module !== 'undefined') module.exports = L;
 })(typeof window !== 'undefined' ? window : globalThis);
