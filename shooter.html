@@ -268,7 +268,7 @@
 <div class="screen" id="s-loadout">
   <div class="card" style="width:min(900px,94vw)">
     <h2>총 선택 <small id="lcount" style="color:#9fb0cc;font-size:14px"></small></h2>
-    <div style="color:#9fb0cc;font-size:13px;margin-bottom:8px">최대 2개 · 이미 2개를 골랐다면 새로 누른 총이 먼저 고른 총을 대체해요 · 선택한 총을 다시 누르면 해제 · 게임 중 1, 2번 키나 마우스 휠로 교체 · 우클릭: 조준(모든 총) · Z: 엎드리기 · 연사 없음(클릭 1번 = 1발)</div>
+    <div style="color:#9fb0cc;font-size:13px;margin-bottom:8px">최대 2개 · 이미 2개를 골랐다면 새로 누른 총이 먼저 고른 총을 대체해요 · 선택한 총을 다시 누르면 해제 · 게임 중 1, 2번 키나 마우스 휠로 교체 · 우클릭: 조준(모든 총) · Z: 엎드리기 · 누르고 있으면 연사</div>
     <div class="row" id="lcats" style="margin-bottom:8px;gap:6px"></div>
     <div style="margin-bottom:8px"><input id="lsearch" placeholder="총 이름 검색" style="width:min(300px,80%)"></div>
     <div id="wgrid"></div>
@@ -282,7 +282,7 @@
     <h2 id="rtitle">개인전 방 목록</h2>
     <button class="pri" id="b-practice" style="display:none;width:100%;margin-bottom:10px">🎯 훈련장 — 봇 1명과 연습 (끝나지 않음)</button>
     <div id="roomlist"></div>
-    <div style="margin-bottom:10px"><input id="rname" maxlength="20" placeholder="방 이름 (비우면 자동)" style="width:200px"> <select id="rmap" title="맵"></select></div>
+    <div style="margin-bottom:10px"><input id="rname" maxlength="20" placeholder="방 이름 (비우면 자동)" style="width:200px"> <select id="rmap" title="맵"></select> <select id="rlimit" title="최대 킬 수"></select></div>
     <div class="row">
       <button class="pri" id="b-create">방 만들기</button>
       <button id="b-rback">뒤로</button>
@@ -295,7 +295,7 @@
   <div class="card" style="width:420px">
     <h2 id="wname"></h2>
     <div id="wmode" style="color:#9fb0cc;font-size:14px"></div>
-    <div style="margin:10px 0">맵 <select id="wmap"></select> <small id="wmaphint" style="color:#9fb0cc"></small></div>
+    <div style="margin:10px 0">맵 <select id="wmap"></select> · 최대 킬 <select id="wlimit"></select><br><small id="wmaphint" style="color:#9fb0cc"></small></div>
     <div id="plist"></div>
     <div id="whint" style="color:#9fb0cc;font-size:14px;margin-bottom:10px"></div>
     <div class="row">
@@ -524,7 +524,12 @@ $('b-setback').onclick=()=>setScreen('menu');
 
 $('b-ffa').onclick=()=>openRooms('ffa');
 $('b-team').onclick=()=>openRooms('team');
-function openRooms(m){mode=m;$('b-practice').style.display=m==='ffa'?'':'none';$('rtitle').textContent=(m==='ffa'?'개인전':'팀전')+' 방 목록';setScreen('rooms');renderRooms([]);send({t:'lobby',nick:myNick(),loadout:LOADOUT})}
+const LIMITS=[5,10,15,20,30,50];
+function fillLimit(sel,md,val){ // 개인전: 킬 수만 / 팀전: '제한 없음(시간만)' 포함
+  sel.innerHTML=(md==='team'?'<option value="0">킬 제한 없음 (3분)</option>':'')+LIMITS.map(n=>'<option value="'+n+'">'+n+'킬</option>').join('');sel.value=val;
+}
+const limitText=(md,l)=>md==='ffa'?l+'킬 먼저 달성하면 승리':(l>0?'3분 안에 팀 합산 '+l+'킬을 먼저 달성하거나, 시간이 끝났을 때 킬이 많은 팀 승리':'제한시간 3분, 팀 합산 킬이 많은 팀 승리');
+function openRooms(m){mode=m;fillLimit($('rlimit'),m,m==='ffa'?10:0);$('b-practice').style.display=m==='ffa'?'':'none';$('rtitle').textContent=(m==='ffa'?'개인전':'팀전')+' 방 목록';setScreen('rooms');renderRooms([]);send({t:'lobby',nick:myNick(),loadout:LOADOUT})}
 $('b-rback').onclick=()=>setScreen('menu');
 $('b-practice').onclick=()=>send({t:'practice',map:+$('rmap').value,nick:myNick(),loadout:LOADOUT}); // 아래에서 고른 맵으로 바로 시작
 function quitGame(){ // 진행 중인 게임에서 나가기
@@ -533,7 +538,7 @@ function quitGame(){ // 진행 중인 게임에서 나가기
 $('b-quit').onclick=e=>{e.stopPropagation();quitGame()};
 {let armed=0;const ex=$('tb-exit'); // 터치: 실수로 누르지 않게 두 번 눌러야 나감
  ex.onclick=()=>{if(performance.now()<armed){armed=0;ex.textContent='✕ 나가기';quitGame()}else{armed=performance.now()+2200;ex.textContent='한 번 더 누르면 나가요';setTimeout(()=>{if(performance.now()>=armed)ex.textContent='✕ 나가기'},2300)}};}
-$('b-create').onclick=()=>{send({t:'create',mode,nick:myNick(),loadout:LOADOUT,map:+$('rmap').value,name:$('rname').value.trim()});$('rname').value=''};
+$('b-create').onclick=()=>{send({t:'create',mode,nick:myNick(),loadout:LOADOUT,map:+$('rmap').value,limit:+$('rlimit').value,name:$('rname').value.trim()});$('rname').value=''};
 function renderRooms(list){
   const box=$('roomlist');box.innerHTML='';
   list=list.filter(r=>r.mode===mode);
@@ -542,23 +547,24 @@ function renderRooms(list){
     const b=document.createElement('button');b.className='room';
     const playing=r.state!=='wait',full=r.count>=r.max;
     b.disabled=playing||full;
-    b.innerHTML='<span>'+esc(r.name)+'<br><small>🗺 '+(MAPS[r.map]||MAPS[0]).name+' · '+(playing?'게임 진행 중':full?'가득 참':'대기 중')+'</small></span><b>'+r.count+' / '+r.max+'</b>';
+    b.innerHTML='<span>'+esc(r.name)+'<br><small>🗺 '+(MAPS[r.map]||MAPS[0]).name+' · 🎯 '+(r.limit>0?r.limit+'킬':'시간제')+' · '+(playing?'게임 진행 중':full?'가득 참':'대기 중')+'</small></span><b>'+r.count+' / '+r.max+'</b>';
     b.onclick=()=>send({t:'join',id:r.id,nick:myNick(),loadout:LOADOUT});
     box.appendChild(b);
   }
 }
 function renderWait(){
   $('wname').textContent=room.name;
-  $('wmode').textContent=room.mode==='ffa'?'개인전 · 10킬 먼저 달성하면 승리':'팀전 · 제한시간 3분, 팀 합산 킬이 많은 팀 승리';
+  $('wmode').textContent=(room.mode==='ffa'?'개인전 · ':'팀전 · ')+limitText(room.mode,room.limit);
   $('plist').innerHTML=room.players.map(p=>'<div class="pl"><span>'+titleTag(p.title)+esc(p.nick)+(p.level?' <small style="color:#9fb0cc">Lv.'+p.level+'</small>':'')+(p.id===myId?' (나)':'')+'</span><span>'+(p.id===room.host?'👑 방장':'')+'</span></div>').join('');
   const host=room.host===myId,enough=room.players.length>=2;
-  $('wmap').value=room.map||0;$('wmap').disabled=!host;$('wmaphint').textContent=host?'':'(방장만 바꿀 수 있어요)';
+  $('wmap').value=room.map||0;$('wmap').disabled=!host;fillLimit($('wlimit'),room.mode,room.limit);$('wlimit').disabled=!host;$('wmaphint').textContent=host?'':'(방장만 바꿀 수 있어요)';
   $('b-start').style.display=host?'':'none';
   $('b-start').disabled=!enough;
   $('whint').textContent=(enough?'':'2명 이상 모여야 시작할 수 있어요. ')+(room.mode==='team'?'팀은 시작할 때 랜덤으로 배정돼요.':'')+(host?'':' 방장이 시작할 때까지 기다리세요.');
 }
 $('b-start').onclick=()=>send({t:'start',loadout:LOADOUT});
 $('wmap').onchange=()=>send({t:'setmap',map:+$('wmap').value});
+$('wlimit').onchange=()=>send({t:'setlimit',limit:+$('wlimit').value});
 $('b-leave').onclick=()=>{send({t:'leave'});room=null;setScreen('rooms');renderRooms([])};
 $('b-rok').onclick=()=>{setScreen('wait');if(room)renderWait()};
 
@@ -997,7 +1003,7 @@ let flashT=0;
 const MAX_HP=200; // 최대 체력 (서버와 같아야 함)
 const P={x:0,z:0,y:1.7,vy:0,yaw:0,pitch:0,hp:MAX_HP,reload:0,cool:0,alive:false,onGround:true,w:[],cur:0};
 const CW=()=>WEAPONS[P.w[P.cur].id];
-let touchFire=false,rightDown=false,padZoom=false,touchZoom=false,freeMode=false,padMode=false,vSprint=false,padSprint=false,padJump=false;
+let touchFire=false,mouseFire=false,padFire=false,rightDown=false,padZoom=false,touchZoom=false,freeMode=false,padMode=false,vSprint=false,padSprint=false,padJump=false;
 const joy={x:0,y:0},padJoy={x:0,y:0};
 const zoomed=()=>(rightDown||padZoom||touchZoom)&&P.alive&&P.w.length&&!medBusy()&&!(G&&G.over);
 const AZ=()=>{const z=CW().zoom;return z>1?z:1.3}; // 조준 배율 (스코프 총은 고유 배율)
@@ -1026,7 +1032,17 @@ function gunSound(snd,vol){
     og.gain.setValueAtTime(v*0.8,t);og.gain.exponentialRampToValueAtTime(0.0001,t+0.14);o.connect(og).connect(ac.destination);o.start(t);o.stop(t+0.15);
   }catch{}
 }
-function stepSound(){beep(55+Math.random()*25,0.05,'sine',0.04)}
+function footSound(vol,pan){ // 짧은 '툭' 소리. pan: -1(왼쪽) ~ 1(오른쪽)
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();if(!noiseBuf)gunSound(100,0.0001);
+    const t=ac.currentTime,v=Math.max(0.0002,0.5*SET.vol*vol),src=ac.createBufferSource();src.buffer=noiseBuf;
+    const f=ac.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(420+Math.random()*160,t);
+    const g=ac.createGain();g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);
+    let out=g;if(ac.createStereoPanner){const p=ac.createStereoPanner();p.pan.value=Math.max(-1,Math.min(1,pan||0));g.connect(p);out=p}
+    src.connect(f).connect(g);out.connect(ac.destination);src.start(t,Math.random()*0.2);src.stop(t+0.1);
+  }catch{}
+}
+function stepSound(){footSound(0.3,0)} // 내 발소리
 function killMsg(hs){
   const n=G.streak,el=$('kmsg');
   el.innerHTML='💀 '+(['','처치!','더블 킬!','트리플 킬!','쿼드라 킬!'][n]||'학살 중! ×'+n)+'<small>'+(hs?'🎯 헤드샷 ':'')+(ME&&!ME.guest&&!G.practice?'+'+(hs?125:100)+' XP':'')+'</small>';
@@ -1398,7 +1414,7 @@ function renderTop(){
   if(!G)return;
   const t=G.endsAt?Math.max(0,Math.ceil((G.endsAt-performance.now())/1000)):0;
   const tm=G.endsAt?' <small>⏱ '+Math.floor(t/60)+':'+String(t%60).padStart(2,'0')+'</small>':'';
-  $('top').innerHTML=G.mode==='team'?'<span class="t0">레드 '+G.teamKills[0]+'</span> : <span class="t1">'+G.teamKills[1]+' 블루</span>'+tm:(G.practice?'🎯 훈련장 <small>(킬 제한 없음 · 나가려면 '+(freeMode?'✕ 나가기':'Esc')+')</small>':'목표 '+G.limit+'킬 <small>(시간 제한 없음)</small>');
+  $('top').innerHTML=G.mode==='team'?'<span class="t0">레드 '+G.teamKills[0]+'</span> : <span class="t1">'+G.teamKills[1]+' 블루</span>'+(G.limit>0?' <small>(목표 '+G.limit+'킬)</small>':'')+tm:(G.practice?'🎯 훈련장 <small>(킬 제한 없음 · 나가려면 '+(freeMode?'✕ 나가기':'Esc')+')</small>':'목표 '+G.limit+'킬 <small>(시간 제한 없음)</small>');
 }
 function hitMarker(hs,kill){
   const el=$('hit');el.className='';void el.offsetWidth;el.className='pop'+(kill?' kill':hs?' hs':'');
@@ -1483,14 +1499,15 @@ function locked(){return document.pointerLockElement===canvas}
 function playing(){return locked()||freeMode||padMode}
 function updatePause(){$('pause').style.display=(screen==='game'&&!playing())?'flex':'none'}
 $('pause').onclick=()=>{padMode=false;canvas.requestPointerLock()};
-document.addEventListener('pointerlockchange',updatePause);
+document.addEventListener('pointerlockchange',()=>{if(!locked())mouseFire=false;updatePause()});
 addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='KeyR')reload();if(e.code==='KeyZ')toggleProne();if(e.code==='KeyC')useMed();if(e.code==='KeyG')throwNade('frag');if(e.code==='KeyT')throwNade('smoke');if(e.code==='KeyV')melee();if(e.code==='KeyX')callAir();if(e.code==='Digit1')switchTo(0);if(e.code==='Digit2')switchTo(1)});
 addEventListener('keyup',e=>keys[e.code]=false);
 addEventListener('mousedown',e=>{
-  if(e.button===0&&screen==='game'&&playing()&&!freeMode)shoot(); // 연사 없음: 클릭 1번 = 1발
+  if(e.button===0&&screen==='game'&&playing()&&!freeMode){mouseFire=true;shoot()} // 누르고 있으면 연사
   if(e.button===2)rightDown=true;
 });
-addEventListener('mouseup',e=>{if(e.button===2)rightDown=false});
+addEventListener('mouseup',e=>{if(e.button===0)mouseFire=false;if(e.button===2)rightDown=false});
+addEventListener('blur',()=>{mouseFire=false;rightDown=false});
 addEventListener('contextmenu',e=>{if(screen==='game')e.preventDefault()});
 addEventListener('wheel',e=>{if(screen==='game'&&playing()&&P.w.length>1)switchTo(P.cur===0?1:0)});
 addEventListener('mousemove',e=>{
@@ -1563,6 +1580,10 @@ function loop(){
       if(p.flash>0||p.flashOn){p.flash-=dt;p.flashOn=p.flash>0;const e=p.flashOn?0xff4040:0;p.body.material.emissive.setHex(e);p.head.material.emissive.setHex(e)}
       { // 걷기 애니메이션 / 쓰러짐 / 부활 보호 깜빡임
         const spd=Math.hypot(p.g.position.x-ox,p.g.position.z-oz)/Math.max(dt,0.001);p.walk+=spd*dt*2.2;
+        if(p.alive&&spd>1.6&&spd<15&&p.pr<0.5){ // 다른 사람 발소리: 2.4m 걸을 때마다, 28m 안에서만 들림 (엎드려 기면 안 들림)
+          p.stepAcc=(p.stepAcc||0)+spd*dt;
+          if(p.stepAcc>2.4){p.stepAcc=0;const d=Math.hypot(p.g.position.x-P.x,p.g.position.z-P.z);if(d<28)footSound(1.1*(1-d/28),Math.sin(dirAngle(p)))}
+        }
         const sw=Math.sin(p.walk)*Math.min(0.7,spd*0.12);p.legL.rotation.x=sw;p.legR.rotation.x=-sw;
         if(!p.alive){p.deadT+=dt;const q=Math.min(1,p.deadT/0.42),k=q*q*(3-2*q),bounce=p.deadT>0.42&&p.deadT<0.62?Math.sin((p.deadT-0.42)/0.2*Math.PI)*0.09:0;p.pose.rotation.x=-k*Math.PI/2;p.pose.position.y=k*0.25+bounce;p.pose.position.z=0;p.legL.rotation.x=k*0.5;p.legR.rotation.x=-k*0.3;if(p.deadT>4)p.g.visible=false}
         else p.g.visible=!(p.protUntil>performance.now()&&Math.floor(performance.now()/110)%2);
@@ -1637,7 +1658,7 @@ function update(dt){
   P.cool-=dt;
   if(P.rec>0){const d=Math.min(P.rec,P.rec*dt*4+0.03*dt);P.rec-=d;P.pitch-=d} // 반동 복귀
   if(P.reload>0){P.reload-=dt;if(P.reload<=0){P.w[P.cur].ammo=CW().mag;hud()}}
-  if(touchFire)shoot(); // 터치 연사 (shoot()가 쿨타임/재장전을 확인함)
+  if(touchFire||mouseFire||padFire)shoot(); // 누르고 있는 동안 연사 (shoot()가 쿨타임/재장전을 확인함)
 }
 // ================= 터치 조작 (폰/태블릿) =================
 function checkRot(){$('rot').style.display=(freeMode&&screen==='game'&&innerHeight>innerWidth)?'flex':'none'}
@@ -1709,9 +1730,10 @@ let padPrev=[];
 function pollPad(dt){
   const pads=navigator.getGamepads?navigator.getGamepads():[];let gp=null;
   for(const p of pads)if(p&&p.connected){gp=p;break}
-  if(!gp){padPrev=[];padZoom=padJump=padSprint=false;padJoy.x=padJoy.y=0;return}
+  if(!gp){padPrev=[];padZoom=padJump=padSprint=padFire=false;padJoy.x=padJoy.y=0;return}
   const now=gp.buttons.map(x=>x.pressed),b=i=>!!now[i],pr=i=>b(i)&&!padPrev[i];
   if(!playing()){ // 일시정지 중: 아무 버튼이나 누르면 재개
+    padFire=false;
     if(now.some(Boolean)&&!padPrev.some(Boolean)){padMode=true;updatePause()}
     padPrev=now;return;
   }
@@ -1721,7 +1743,7 @@ function pollPad(dt){
   if(P.alive&&P.w.length){
     const k=3.2*SET.sens*dt/(zoomed()?AZ():1); // 스틱을 끝까지 밀수록 빠르게(곡선)
     P.yaw-=Math.sign(rx)*rx*rx*k;P.pitch=Math.max(-1.5,Math.min(1.5,P.pitch-Math.sign(ry)*ry*ry*k));
-    if(pr(7))shoot();          // RT: 발사 (누를 때마다 1발)
+    padFire=b(7);if(pr(7))shoot(); // RT: 발사 (누르고 있으면 연사)
     if(pr(5))throwNade(nadeSel); // RB: 선택한 것(수류탄/연막탄) 던지기
     if(pr(15))swapNade();        // 방향키 오른쪽: 수류탄 ↔ 연막탄 전환
     if(pr(11))melee();          // R3(오른쪽 스틱 누르기): 칼

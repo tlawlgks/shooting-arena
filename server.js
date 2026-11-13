@@ -6,7 +6,9 @@ const WEAPONS = require('./weapons.js');
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 8;
-const KILL_LIMIT = { ffa: 10, team: 0 }; // 개인전: 10킬 선취 / 팀전: 킬 제한 없음(시간제)
+const KILL_LIMIT = { ffa: 10, team: 0 }; // 기본값. 개인전: 10킬 선취 / 팀전: 킬 제한 없음(3분 시간제)
+const LIMITS = [5, 10, 15, 20, 30, 50]; // 방에서 고를 수 있는 최대 킬 수 (팀전은 0 = 제한 없음도 가능)
+const limitOf = (mode, v) => { v = Math.floor(+v); return LIMITS.includes(v) || (mode === 'team' && v === 0) ? v : KILL_LIMIT[mode]; };
 const TEAM_TIME_MS = 3 * 60 * 1000; // 팀전 제한시간 3분 (개인전은 무제한)
 const RESPAWN_MS = 3000;
 const MAP_COUNT = 5;    // 맵 개수 (클라이언트의 MAPS와 같아야 함)
@@ -136,7 +138,7 @@ const send = (c, m) => { if (c.ws.readyState === 1) c.ws.send(JSON.stringify(m))
 const inRoom = (room, m) => room.players.forEach(p => send(p, m));
 
 function roomInfo(r) {
-  return { id: r.id, name: r.name, mode: r.mode, map: r.map || 0, count: r.players.size, max: MAX_PLAYERS, state: r.state };
+  return { id: r.id, name: r.name, mode: r.mode, map: r.map || 0, limit: r.limit, count: r.players.size, max: MAX_PLAYERS, state: r.state };
 }
 const listRooms = () => [...rooms.values()].filter(r => !r.practice).map(roomInfo); // 훈련장은 목록에 나오지 않음
 function broadcastRooms() {
@@ -145,7 +147,7 @@ function broadcastRooms() {
 }
 function roomPayload(r) {
   return {
-    t: 'room', id: r.id, name: r.name, mode: r.mode, map: r.map || 0, state: r.state, host: r.host, max: MAX_PLAYERS,
+    t: 'room', id: r.id, name: r.name, mode: r.mode, map: r.map || 0, limit: r.limit, state: r.state, host: r.host, max: MAX_PLAYERS,
     players: [...r.players.values()].map(p => ({ id: p.id, nick: p.nick, level: statOf(p) ? levelOf(statOf(p).xp) : 0, title: cosOf(p).title }))
   };
 }
@@ -190,7 +192,7 @@ function startGame(r) {
   list.forEach(p => { Object.assign(p, { hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }); });
   r.players.forEach(p => {
     send(p, {
-      t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: KILL_LIMIT[r.mode], duration, countdown: COUNTDOWN_MS,
+      t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: r.limit, duration, countdown: COUNTDOWN_MS,
       players: [...r.players.values()].map(q => ({ id: q.id, nick: q.nick, team: q.team, x: q.sp.x, z: q.sp.z, cos: cosOf(q) }))
     });
   });
@@ -251,7 +253,7 @@ function damage(r, c, v, dmg, hs) {
     if (ks || vs) saveUsers();
   }
   inRoom(r, { t: 'kill', killer: c.id, victim: v.id, hs: !!hs, kills: c.kills, deaths: v.deaths, teamKills: r.teamKills, air: c.air || 0 });
-  const limit = r.practice ? 0 : KILL_LIMIT[r.mode]; // 훈련장은 킬 제한 없음 (끝나지 않음)
+  const limit = r.practice ? 0 : r.limit; // 훈련장은 킬 제한 없음 (끝나지 않음)
   if (limit > 0 && (r.mode === 'team' ? Math.max(...r.teamKills) >= limit : c.kills >= limit)) return endGame(r);
   setTimeout(() => {
     if (r.state !== 'play' || !r.players.has(v.id)) return;
@@ -323,7 +325,7 @@ wss.on('connection', ws => {
       case 'create': {
         if (r) break;
         const mode = m.mode === 'team' ? 'team' : 'ffa';
-        const room = { id: nextRoomId++, name: String(m.name || '').slice(0, 20) || (c.nick + '의 방'), mode, map: mapIdx(m.map), host: c.id, state: 'wait', players: new Map(), teamKills: [0, 0] };
+        const room = { id: nextRoomId++, name: String(m.name || '').slice(0, 20) || (c.nick + '의 방'), mode, map: mapIdx(m.map), limit: limitOf(mode, m.limit), host: c.id, state: 'wait', players: new Map(), teamKills: [0, 0] };
         rooms.set(room.id, room); room.players.set(c.id, c); c.room = room; sendRoom(room); break;
       }
       case 'join': {
@@ -352,6 +354,9 @@ wss.on('connection', ws => {
         if (now - (bot.lastShot || 0) < w.cd * 600 + 250) break;
         bot.lastShot = now; damage(r, bot, c, w.dmg, false); break;
       }
+      case 'setlimit': // 방장이 대기실에서 최대 킬 수 변경
+        if (!r || r.host !== c.id || r.state !== 'wait') break;
+        r.limit = limitOf(r.mode, m.limit); sendRoom(r); break;
       case 'setmap': // 방장이 대기실에서 맵 변경
         if (!r || r.host !== c.id || r.state !== 'wait') break;
         r.map = mapIdx(m.map); sendRoom(r); break;
