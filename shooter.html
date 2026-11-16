@@ -259,6 +259,7 @@
     <div class="row">
       <button class="big" id="b-ffa">개인전</button>
       <button class="big" id="b-team">팀전</button>
+      <button class="big" id="b-dog">✈ 도그파이트</button>
     </div>
   </div>
   <button class="sm inst" style="display:none">📲 홈 화면에 추가</button>
@@ -524,6 +525,7 @@ $('b-setback').onclick=()=>setScreen('menu');
 
 $('b-ffa').onclick=()=>openRooms('ffa');
 $('b-team').onclick=()=>openRooms('team');
+$('b-dog').onclick=()=>{if(!ME||ME.guest){try{localStorage.setItem('nick',myNick())}catch{}}location.href='/dogfight'}; // 전투기 모드는 별도 화면
 const LIMITS=[5,10,15,20,30,50];
 function fillLimit(sel,md,val){ // 개인전: 킬 수만 / 팀전: '제한 없음(시간만)' 포함
   sel.innerHTML=(md==='team'?'<option value="0">킬 제한 없음 (3분)</option>':'')+LIMITS.map(n=>'<option value="'+n+'">'+n+'킬</option>').join('');sel.value=val;

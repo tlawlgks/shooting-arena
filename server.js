@@ -6,7 +6,7 @@ const WEAPONS = require('./weapons.js');
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 8;
-const KILL_LIMIT = { ffa: 10, team: 0 }; // 기본값. 개인전: 10킬 선취 / 팀전: 킬 제한 없음(3분 시간제)
+const KILL_LIMIT = { ffa: 10, team: 0, dog: 10 }; // 기본값. 개인전: 10킬 선취 / 팀전: 킬 제한 없음(3분 시간제)
 const LIMITS = [5, 10, 15, 20, 30, 50]; // 방에서 고를 수 있는 최대 킬 수 (팀전은 0 = 제한 없음도 가능)
 const limitOf = (mode, v) => { v = Math.floor(+v); return LIMITS.includes(v) || (mode === 'team' && v === 0) ? v : KILL_LIMIT[mode]; };
 const TEAM_TIME_MS = 3 * 60 * 1000; // 팀전 제한시간 3분 (개인전은 무제한)
@@ -22,6 +22,7 @@ const MEDKIT_HEAL = 50;       // 구급상자 총 회복량 (개수 무제한)
 const MEDKIT_TICKS = 5;       // 5초 동안 1초마다 10씩 회복, 그동안 다른 행동 불가
 const REGEN_DELAY_MS = 10000;  // 마지막 피격 후 자동 회복 시작까지 (10초)
 const REGEN_STEP_MS = 333;     // 자동 회복 속도: 초당 3 (구급상자는 초당 10)
+const JET = { gun: 9, missile: 110, missiles: 4 }; // 도그파이트: 기총 한 발 / 미사일 피해, 목숨당 미사일 수
 const MAX_HP = 200;             // 최대 체력 (피해 100이 넘는 총도 한 방에 죽지 않게)
 const KNIFE_DMG = 100;         // 칼: 근접 한 방
 const NADES = () => ({ frag: 2, smoke: 1 }); // 목숨마다 수류탄 2, 연막탄 1
@@ -31,6 +32,7 @@ const ARENA = 50;
 // 정적 파일 서버 (shooter.html)
 const STATIC = { // 요청 경로 -> [파일, Content-Type]
   '/weapons.js': ['weapons.js', 'text/javascript; charset=utf-8'],
+  '/dogfight': ['dogfight.html', 'text/html; charset=utf-8'], // 도그파이트(전투기) 화면
   '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
   '/icon-192.png': ['icon-192.png', 'image/png'],
@@ -189,7 +191,7 @@ function startGame(r) {
   const duration = r.mode === 'team' ? TEAM_TIME_MS : 0;
   r.startAt = Date.now() + COUNTDOWN_MS;
   if (duration) r.timer = setTimeout(() => endGame(r), duration + COUNTDOWN_MS);
-  list.forEach(p => { Object.assign(p, { hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }); });
+  list.forEach(p => { Object.assign(p, { hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, mis: JET.missiles, pendMis: 0, nextRegen: 0 }); });
   r.players.forEach(p => {
     send(p, {
       t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: r.limit, duration, countdown: COUNTDOWN_MS,
@@ -257,7 +259,7 @@ function damage(r, c, v, dmg, hs) {
   if (limit > 0 && (r.mode === 'team' ? Math.max(...r.teamKills) >= limit : c.kills >= limit)) return endGame(r);
   setTimeout(() => {
     if (r.state !== 'play' || !r.players.has(v.id)) return;
-    v.hp = MAX_HP; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS; v.nades = NADES();
+    v.hp = MAX_HP; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS; v.nades = NADES(); v.mis = JET.missiles;
     inRoom(r, { t: 'respawn', id: v.id, x: v.sp.x, z: v.sp.z, prot: SPAWN_PROTECT_MS });
   }, RESPAWN_MS);
 }
@@ -324,7 +326,7 @@ wss.on('connection', ws => {
       case 'lobby': send(c, { t: 'rooms', rooms: listRooms() }); break;
       case 'create': {
         if (r) break;
-        const mode = m.mode === 'team' ? 'team' : 'ffa';
+        const mode = m.mode === 'team' ? 'team' : m.mode === 'dog' ? 'dog' : 'ffa'; // dog = 도그파이트(전투기 개인전)
         const room = { id: nextRoomId++, name: String(m.name || '').slice(0, 20) || (c.nick + '의 방'), mode, map: mapIdx(m.map), limit: limitOf(mode, m.limit), host: c.id, state: 'wait', players: new Map(), teamKills: [0, 0] };
         rooms.set(room.id, room); room.players.set(c.id, c); c.room = room; sendRoom(room); break;
       }
@@ -340,10 +342,10 @@ wss.on('connection', ws => {
       case 'practice': { // 훈련장: 봇 1명과 끝나지 않는 연습 (전적 미반영, 방 목록에 안 나옴)
         if (r) break;
         const bot = { ws: { readyState: 0 }, id: nextId++, nick: '훈련 봇', bot: true, room: null, user: null, guest: true, loadout: [BOT_WEAPON] };
-        const room = { id: nextRoomId++, name: '훈련장', mode: 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
+        const room = { id: nextRoomId++, name: '훈련장', mode: m.dog ? 'dog' : 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
         rooms.set(room.id, room); room.players.set(c.id, c); room.players.set(bot.id, bot); c.room = room;
-        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }));
-        send(c, { t: 'start', mode: 'ffa', practice: true, bot: bot.id, map: room.map, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
+        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, mis: JET.missiles, pendMis: 0, nextRegen: 0 }));
+        send(c, { t: 'start', mode: room.mode, practice: true, bot: bot.id, map: room.map, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
           players: [c, bot].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z, cos: cosOf(q) })) });
         break;
       }
@@ -366,7 +368,7 @@ wss.on('connection', ws => {
         startGame(r); break;
       case 'state':
         if (!r || !(r.state === 'play' ? c.alive : Date.now() < (r.outroUntil || 0))) break; // 종료 연출 중에도 위치는 계속 전달
-        c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0 }; break;
+        c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0, roll: +m.roll || 0 }; break;
       case 'throw': { // 수류탄·연막탄 던지기: 개수 확인 후 다른 사람들에게 궤적 전달
         if (!r || r.state !== 'play' || !c.alive || Date.now() < (r.startAt || 0)) break;
         const k = m.k === 'smoke' ? 'smoke' : 'frag';
@@ -407,6 +409,33 @@ wss.on('connection', ws => {
         if (c.state && v.state && Math.hypot(c.state.x - v.state.x, c.state.z - v.state.z) > 5) break; // 너무 멀면 무효
         damage(r, c, v, KNIFE_DMG, false); break;
       }
+      // ---------- 도그파이트 (전투기) ----------
+      case 'jhit': { // 기총 명중 (명중 판정은 쏜 사람의 브라우저가 계산)
+        if (!r || r.mode !== 'dog' || r.state !== 'play' || !c.alive) break;
+        const v = r.players.get(m.target), now = Date.now();
+        if (!v || v === c || !v.alive || now < (r.startAt || 0) || now < (v.prot || 0)) break;
+        if (now - (c.lastJet || 0) < 50) break; // 발사 속도 제한
+        c.lastJet = now; damage(r, c, v, JET.gun, false); break;
+      }
+      case 'jfire': { // 미사일 발사: 개수 확인 후 다른 사람들에게 알림 (표적에게는 경고가 뜸)
+        if (!r || r.mode !== 'dog' || r.state !== 'play' || !c.alive || !(c.mis > 0)) break;
+        c.mis--; c.pendMis = (c.pendMis || 0) + 1;
+        r.players.forEach(q => { if (q !== c) send(q, { t: 'jfire', id: c.id, target: m.target }); });
+        break;
+      }
+      case 'jmis': { // 미사일 명중: 쏜 만큼만 인정
+        if (!r || r.mode !== 'dog' || r.state !== 'play' || !(c.pendMis > 0)) break;
+        c.pendMis--;
+        const v = r.players.get(m.target);
+        if (!v || v === c || !v.alive || Date.now() < (v.prot || 0)) break;
+        damage(r, c, v, JET.missile, false); break;
+      }
+      case 'jflare': // 플레어: 나를 쫓는 미사일을 속임 (다른 화면에 전달)
+        if (r && r.mode === 'dog' && r.state === 'play' && c.alive) r.players.forEach(q => { if (q !== c) send(q, { t: 'jflare', id: c.id }); });
+        break;
+      case 'jcrash': // 추락 / 산에 충돌 / 전투 구역 이탈: 자폭 처리 (킬로 치지 않음)
+        if (r && r.mode === 'dog' && r.state === 'play' && c.alive && Date.now() >= (r.startAt || 0)) damage(r, c, c, 9999, false);
+        break;
       case 'medkit': { // 구급상자: 체력 50 회복, 쿨타임 40초, 개수 무제한
         if (!r || r.state !== 'play' || !c.alive || c.hp >= MAX_HP || c.healing) break;
         const now = Date.now();

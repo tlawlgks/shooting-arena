@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>도그파이트 - 3D 슈팅 아레나</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0d1320">
+<style>
+  :root{--bg:#0d1320;--panel:#172036;--line:#2a3a5c;--text:#e8eef9}
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,"Malgun Gothic",sans-serif;color:var(--text);user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  canvas{display:block}
+  .screen{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#0a0f1ccc;text-align:center;overflow:auto}
+  .screen.on{display:flex}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px;width:min(480px,92vw)}
+  h1{margin:0 0 4px;font-size:38px}h2{margin:0 0 12px;font-size:22px}
+  button{background:#243556;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:16px;cursor:pointer;font-family:inherit}
+  button:hover:not(:disabled){background:#31487a}button:disabled{opacity:.4;cursor:not-allowed}
+  button.pri{background:#2563eb;border-color:#3b82f6}.sm{font-size:13px;padding:7px 12px}
+  input,select{background:#0d1526;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:15px;font-family:inherit}
+  .row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  #roomlist{display:flex;flex-direction:column;gap:8px;max-height:40vh;overflow:auto;margin:10px 0}
+  .room{display:flex;justify-content:space-between;align-items:center;gap:20px;text-align:left;width:100%}
+  .room small,.dim{color:#9fb0cc}.empty{color:#8fa0bb;padding:16px}
+  .pl{background:#0d1526;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;margin:5px 0;text-align:left}
+  #err{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#b91c1c;padding:10px 18px;border-radius:8px;display:none;z-index:40}
+  #hud{display:none}#hud.on{display:block}
+  .h{position:fixed;font-weight:700;text-shadow:0 2px 6px #000;pointer-events:none}
+  #hp{left:20px;bottom:20px;width:240px}
+  #hpbar{height:14px;background:#0008;border:2px solid #fff6;border-radius:8px;overflow:hidden;margin-top:4px}
+  #hpfill{height:100%;width:100%;background:#3ecf6e;transition:width .15s}
+  #info{left:20px;bottom:66px;font-size:15px;line-height:1.6;font-variant-numeric:tabular-nums}
+  #wep{right:24px;bottom:20px;font-size:18px;text-align:right;line-height:1.6}
+  #boostbar{display:inline-block;width:90px;height:8px;background:#0008;border:1px solid #fff6;border-radius:5px;overflow:hidden;vertical-align:middle}
+  #boostfill{height:100%;background:#ffb020}
+  #top{left:50%;top:14px;transform:translateX(-50%);font-size:20px;white-space:nowrap}
+  #sb{right:16px;top:14px;font-size:14px;text-align:right;line-height:1.6;background:#0006;padding:8px 12px;border-radius:8px}
+  #feed{left:16px;top:176px;font-size:14px;line-height:1.7}
+  #warn{left:50%;top:20%;transform:translateX(-50%);font-size:26px;color:#ff5a5a;white-space:nowrap;text-align:center}
+  #count{left:50%;top:30%;transform:translateX(-50%);font-size:90px}
+  #dead{left:50%;top:46%;transform:translate(-50%,-50%);font-size:32px;color:#fca5a5;display:none;text-align:center}
+  #kmsg{left:50%;top:60%;transform:translateX(-50%);font-size:38px;color:#ffd24a;opacity:0;white-space:nowrap;text-shadow:0 0 18px #ff9a00,0 2px 6px #000}
+  #kmsg.show{animation:km 1.7s ease-out}
+  @keyframes km{0%{opacity:0;transform:translateX(-50%) scale(1.8)}12%{opacity:1;transform:translateX(-50%) scale(1)}75%{opacity:1}100%{opacity:0}}
+  #endmsg{display:none;left:50%;top:26%;transform:translateX(-50%);font-size:60px;text-align:center;white-space:nowrap}
+  #endmsg small{display:block;font-size:22px;color:#ffd24a;margin-top:6px}
+  #radar{position:fixed;left:14px;top:14px;width:150px;height:150px;border-radius:50%;border:2px solid #fff5;background:#0a141acc;pointer-events:none}
+  #aim{position:fixed;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border:2px solid #fff8;border-radius:50%;pointer-events:none;box-sizing:border-box}
+  #gcross{position:fixed;width:0;height:0;pointer-events:none}
+  #gcross:before,#gcross:after{content:"";position:absolute;background:#7dff9a;box-shadow:0 0 3px #000}
+  #gcross:before{left:-1px;top:-13px;width:2px;height:26px}#gcross:after{top:-1px;left:-13px;height:2px;width:26px}
+  #gcross.hit:before,#gcross.hit:after{background:#ff4040}
+  .mk{position:fixed;width:44px;height:44px;margin:-22px 0 0 -22px;border:2px solid #ff5050;box-sizing:border-box;pointer-events:none;font-size:11px;font-weight:700;color:#ffb0b0;text-shadow:0 1px 3px #000}
+  .mk span{position:absolute;left:50%;top:100%;transform:translateX(-50%);white-space:nowrap;margin-top:2px}
+  .mk.lock{border-color:#ffe14a;color:#ffe14a}.mk.locked{border-color:#ff2020;border-width:3px;color:#fff;animation:bl .25s steps(2) infinite}
+  @keyframes bl{50%{opacity:.4}}
+  .mk.off{border:none;width:0;height:0;margin:0}
+  .mk.off:before{content:"";position:absolute;left:-9px;top:-9px;border:9px solid transparent;border-bottom:16px solid #ff5050;transform:rotate(var(--a))}
+  .mk.off span{display:none}
+  #hurt{position:fixed;inset:0;background:radial-gradient(transparent 50%,#f00a);opacity:0;pointer-events:none;transition:opacity .25s}
+  #pause{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;cursor:pointer;text-align:center;line-height:1.7}
+  /* 터치 */
+  .tb{display:none;position:fixed;border-radius:50%;background:#fff3;border:2px solid #fff7;color:#fff;font-weight:700;align-items:center;justify-content:center;text-align:center;font-size:13px;touch-action:none;text-shadow:0 1px 3px #000;box-sizing:border-box}
+  body.touch .tb{display:flex}.tb.on{background:#fff8}
+  #t-gun{right:28px;bottom:28px;width:96px;height:96px;background:#e5484d88;font-size:16px}
+  #t-mis{right:140px;bottom:40px;width:68px;height:68px}
+  #t-flare{right:40px;bottom:140px;width:60px;height:60px}
+  #t-boost{right:116px;bottom:124px;width:60px;height:60px;background:#ffb02066}
+  #joybase{display:none;position:fixed;left:40px;bottom:40px;width:140px;height:140px;border-radius:50%;background:#fff2;border:2px solid #fff5;touch-action:none;box-sizing:border-box}
+  body.touch #joybase{display:block}
+  #joyknob{position:absolute;left:50%;top:50%;width:44%;height:44%;border-radius:50%;background:#fff7;transform:translate(-50%,-50%)}
+  #t-exit{display:none;position:fixed;left:50%;top:46px;transform:translateX(-50%);background:#0009;border:1px solid #fff5;border-radius:8px;padding:5px 12px;font-size:12px;color:#fff;font-weight:700}
+  body.touch #t-exit{display:block}
+  body.touch #hp{left:50%;transform:translateX(-50%);bottom:12px;width:180px;font-size:12px}
+  body.touch #info{left:200px;bottom:14px;font-size:11px}body.touch #wep{right:200px;bottom:10px;font-size:12px}
+  body.touch #radar{width:96px;height:96px}body.touch #feed{top:112px;font-size:11px}body.touch #sb{font-size:11px}
+  #hud.over .h:not(#endmsg),#hud.over #radar,#hud.over .tb,#hud.over #joybase,#hud.over #aim,#hud.over #gcross,#hud.over #marks,#hud.over #t-exit{display:none!important}
+  #hud.over #endmsg{display:block}
+</style>
+</head>
+<body>
+<div id="err"></div>
+
+<div class="screen on" id="s-lobby">
+  <h1>✈ 도그파이트</h1>
+  <div class="card">
+    <div id="who" class="dim" style="margin-bottom:10px">서버에 연결하는 중...</div>
+    <div id="nickrow" style="margin-bottom:10px;display:none">닉네임 <input id="nick" maxlength="12" placeholder="닉네임" style="width:160px"></div>
+    <button class="pri" id="b-practice" style="width:100%;margin-bottom:10px">🎯 연습 비행 — 봇 1대와 공중전 (끝나지 않음)</button>
+    <div id="roomlist"></div>
+    <div style="margin-bottom:10px"><input id="rname" maxlength="20" placeholder="방 이름 (비우면 자동)" style="width:190px"> <select id="rlimit" title="최대 킬 수"></select></div>
+    <div class="row"><button class="pri" id="b-create">방 만들기</button><button id="b-back">← 총게임으로</button></div>
+    <div class="dim" style="font-size:12px;margin-top:12px;line-height:1.6;text-align:left">조작(PC): 마우스로 방향 · 클릭 기총 · Space 미사일(조준 고정 후) · F 플레어 · Shift 부스터 · W/S 속도<br>추락하거나 산에 부딪히거나 전투 구역을 벗어나면 격추됩니다</div>
+  </div>
+</div>
+
+<div class="screen" id="s-wait">
+  <div class="card">
+    <h2 id="wname"></h2>
+    <div id="wmode" class="dim" style="font-size:14px"></div>
+    <div style="margin:10px 0">최대 킬 <select id="wlimit"></select></div>
+    <div id="plist"></div>
+    <div id="whint" class="dim" style="font-size:14px;margin-bottom:10px"></div>
+    <div class="row"><button class="pri" id="b-start">게임 시작</button><button id="b-leave">나가기</button></div>
+  </div>
+</div>
+
+<div class="screen" id="s-result">
+  <div class="card">
+    <h2 id="rwin"></h2>
+    <div id="rsub" class="dim" style="font-size:14px;margin-bottom:8px"></div>
+    <div id="rscores"></div>
+    <div class="row" style="margin-top:14px"><button class="pri" id="b-rok">확인</button></div>
+  </div>
+</div>
+
+<div id="hud">
+  <div id="marks"></div>
+  <div id="aim"></div><div id="gcross"></div><div id="hurt"></div>
+  <canvas id="radar" width="150" height="150"></canvas>
+  <div class="h" id="hp">기체 <span id="hpn">200</span><div id="hpbar"><div id="hpfill"></div></div></div>
+  <div class="h" id="info"></div>
+  <div class="h" id="wep"></div>
+  <div class="h" id="top"></div>
+  <div class="h" id="sb"></div>
+  <div class="h" id="feed"></div>
+  <div class="h" id="warn"></div>
+  <div class="h" id="count"></div>
+  <div class="h" id="dead"></div>
+  <div class="h" id="kmsg"></div>
+  <div class="h" id="endmsg"></div>
+  <div id="joybase"><div id="joyknob"></div></div>
+  <div class="tb" id="t-gun">기총</div><div class="tb" id="t-mis">미사일</div><div class="tb" id="t-flare">플레어</div><div class="tb" id="t-boost">부스터</div>
+  <div id="t-exit">✕ 나가기</div>
+  <div id="pause"><h2>일시정지</h2><div>화면을 클릭하면 계속합니다<br>마우스: 방향 · 클릭: 기총 (누르고 있으면 연사)<br>Space / 우클릭: 미사일 (적을 조준해 LOCK이 뜬 뒤) · F: 플레어 (미사일 회피)<br>Shift: 부스터 · W/S: 속도 · A/D: 좌우 선회<br>🎮 왼쪽 스틱 방향 · RT 기총 · RB 미사일 · X 플레어 · A 부스터</div><button class="sm" id="b-quit" style="margin-top:14px">게임 나가기</button></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function showErr(m){const e=$('err');e.textContent=m;e.style.display='block';clearTimeout(showErr.t);showErr.t=setTimeout(()=>e.style.display='none',2500)}
+const rnd=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
+const SET=Object.assign({sens:1,vol:0.6},(()=>{try{return JSON.parse(localStorage.getItem('settings')||'{}')}catch{return{}}})());
+const MAX_HP=200,R=1000,CEIL=700; // 최대 내구도, 전투 구역 반경, 고도 한계
+const TOUCH=matchMedia('(pointer:coarse)').matches;if(TOUCH)document.body.classList.add('touch');
+
+// ================= 네트워크 / 대기실 =================
+let ws,myId=0,ME=null,room=null,G=null,scr='lobby';
+function send(m){if(ws&&ws.readyState===1)ws.send(JSON.stringify(m))}
+function setScr(s){
+  scr=s;for(const k of ['lobby','wait','result'])$('s-'+k).classList.toggle('on',k===s);
+  $('hud').classList.toggle('on',s==='game');
+  if(s!=='game'&&document.pointerLockElement)document.exitPointerLock();
+  updatePause();
+}
+const myNick=()=>{if(ME&&!ME.guest)return ME.user;const n=$('nick').value.trim()||'게스트';try{localStorage.setItem('nick',n)}catch{}return n};
+function connect(){
+  if(location.protocol==='file:'){$('who').textContent='서버를 실행한 뒤 접속하세요';return}
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
+  ws.onopen=()=>{let t=null;try{t=localStorage.getItem('token')}catch{}if(t)send({t:'auth',token:t});else send({t:'guest',nick:$('nick').value.trim()})};
+  ws.onclose=()=>{$('who').textContent='서버와 연결이 끊겼어요. 다시 연결하는 중...';ME=null;if(scr!=='lobby'){showErr('서버와 연결이 끊겼어요');endLocal();setScr('lobby')}setTimeout(connect,2000)};
+  ws.onmessage=e=>onMsg(JSON.parse(e.data));
+}
+function onMsg(m){
+  switch(m.t){
+    case 'hello':myId=m.id;break;
+    case 'err':showErr(m.msg);break;
+    case 'authed':ME={user:m.user,guest:!!m.guest,cos:m.cos||null};
+      $('who').innerHTML=ME.guest?'게스트로 플레이 중 · 전적이 저장되지 않아요':'👤 <b>'+esc(ME.user)+'</b> (로그인됨 · 전적 저장)';
+      $('nickrow').style.display=ME.guest?'':'none';send({t:'lobby'});break;
+    case 'autherr':if(m.expired)send({t:'guest',nick:$('nick').value.trim()});break; // 로그인 정보가 없으면 게스트로
+    case 'rooms':if(scr==='lobby')renderRooms(m.rooms);break;
+    case 'room':room=m;if(scr==='lobby')setScr('wait');if(scr==='wait')renderWait();break;
+    case 'start':beginGame(m);break;
+    case 'states':if(G)for(const id in m.s){const p=G.players[id];if(p&&!p.bot)setState(p,m.s[id])}break;
+    case 'hitconfirm':hitFx(m.dmg);break;
+    case 'hp':onHp(m);break;
+    case 'kill':onKill(m);break;
+    case 'respawn':onRespawn(m);break;
+    case 'left':if(G&&G.players[m.id])removePlayer(m.id);break;
+    case 'jfire':if(G&&G.players[m.id]){const p=G.players[m.id];spawnMissile(p.g.position.clone(),fwd(p.g.rotation.y,p.g.rotation.x),m.target,false);if(m.target===myId){beep(1200,0.5,'square',0.06);warnMsg('⚠ 미사일 접근! 플레어('+(TOUCH?'플레어 버튼':'F')+')',2500)}}break;
+    case 'jflare':if(G&&G.players[m.id]){flareFx(G.players[m.id].g.position);for(const ms of missiles)if(ms.target===m.id&&Math.random()<0.6)ms.fooled=true}break;
+    case 'end':onEnd(m);break;
+  }
+}
+const LIMITS=[5,10,15,20,30,50];
+for(const id of ['rlimit','wlimit'])$(id).innerHTML=LIMITS.map(n=>'<option value="'+n+'">'+n+'킬</option>').join('');
+$('rlimit').value=10;
+try{$('nick').value=localStorage.getItem('nick')||''}catch{}
+function renderRooms(list){
+  const box=$('roomlist');box.innerHTML='';list=list.filter(r=>r.mode==='dog');
+  if(!list.length){box.innerHTML='<div class="empty">만들어진 방이 없어요. 방을 만들거나 연습 비행을 해 보세요!</div>';return}
+  for(const r of list){
+    const b=document.createElement('button');b.className='room';const playing=r.state!=='wait',full=r.count>=r.max;b.disabled=playing||full;
+    b.innerHTML='<span>'+esc(r.name)+'<br><small>🎯 '+r.limit+'킬 · '+(playing?'게임 진행 중':full?'가득 참':'대기 중')+'</small></span><b>'+r.count+' / '+r.max+'</b>';
+    b.onclick=()=>send({t:'join',id:r.id,nick:myNick()});box.appendChild(b);
+  }
+}
+function renderWait(){
+  $('wname').textContent=room.name;$('wmode').textContent='도그파이트 · '+room.limit+'킬 먼저 달성하면 승리';
+  $('plist').innerHTML=room.players.map(p=>'<div class="pl"><span>'+esc(p.nick)+(p.level?' <small class="dim">Lv.'+p.level+'</small>':'')+(p.id===myId?' (나)':'')+'</span><span>'+(p.id===room.host?'👑 방장':'')+'</span></div>').join('');
+  const host=room.host===myId,enough=room.players.length>=2;
+  $('wlimit').value=room.limit;$('wlimit').disabled=!host;
+  $('b-start').style.display=host?'':'none';$('b-start').disabled=!enough;
+  $('whint').textContent=(enough?'':'2명 이상 모여야 시작할 수 있어요. ')+(host?'':'방장이 시작할 때까지 기다리세요.');
+}
+$('b-create').onclick=()=>{send({t:'create',mode:'dog',nick:myNick(),limit:+$('rlimit').value,name:$('rname').value.trim()});$('rname').value=''};
+$('b-practice').onclick=()=>send({t:'practice',dog:true,nick:myNick()});
+$('b-back').onclick=()=>{location.href='/'};
+$('b-start').onclick=()=>send({t:'start'});
+$('wlimit').onchange=()=>send({t:'setlimit',limit:+$('wlimit').value});
+$('b-leave').onclick=()=>{send({t:'leave'});room=null;setScr('lobby')};
+$('b-rok').onclick=()=>{if(room&&!lastPractice){setScr('wait');renderWait()}else{setScr('lobby');send({t:'lobby'})}};
+function quitGame(){if(!G)return;send({t:'leave'});endLocal();room=null;setScr('lobby')}
+$('b-quit').onclick=e=>{e.stopPropagation();quitGame()};
+{let armed=0;const ex=$('t-exit');ex.onclick=()=>{if(performance.now()<armed){armed=0;ex.textContent='✕ 나가기';quitGame()}else{armed=performance.now()+2200;ex.textContent='한 번 더 누르면 나가요';setTimeout(()=>{if(performance.now()>=armed)ex.textContent='✕ 나가기'},2300)}}}
+
+// ================= 3D 세계 =================
+const scene=new THREE.Scene();
+{const c=document.createElement('canvas');c.width=16;c.height=256;const x=c.getContext('2d'),g=x.createLinearGradient(0,0,0,256);
+ g.addColorStop(0,'#2f6fc4');g.addColorStop(0.5,'#8fbce8');g.addColorStop(1,'#dbe8f0');x.fillStyle=g;x.fillRect(0,0,16,256);scene.background=new THREE.CanvasTexture(c)}
+scene.fog=new THREE.Fog(0xc9dcea,700,5200);
+const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,1,9000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));document.body.prepend(renderer.domElement);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+scene.add(new THREE.HemisphereLight(0xdbeaff,0x5a6a48,0.85));
+const sun=new THREE.DirectionalLight(0xfff0d2,0.9);sun.position.set(400,700,250);scene.add(sun);
+const flat=c=>new THREE.MeshPhongMaterial({color:c,flatShading:true,shininess:0,specular:0});
+{ // 지면: 풀/밭 무늬
+  const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');x.fillStyle='#5f8a4e';x.fillRect(0,0,256,256);
+  for(let i=0;i<60;i++){x.fillStyle=['#55803f','#6c9658','#7a8c4a','#4f7a45','#8a9a5a'][i%5];x.globalAlpha=rnd(0.25,0.6);x.fillRect(rnd(0,256),rnd(0,256),rnd(20,80),rnd(20,80))}
+  x.globalAlpha=1;for(let i=0;i<4000;i++){x.fillStyle='rgba(0,0,0,'+rnd(0,0.08)+')';x.fillRect(rnd(0,256),rnd(0,256),2,2)}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(40,40);
+  const g=new THREE.Mesh(new THREE.PlaneGeometry(14000,14000),new THREE.MeshLambertMaterial({map:t}));g.rotation.x=-Math.PI/2;scene.add(g);
+}
+// 산: [x, z, 반지름, 높이] — 부딪히면 격추. 모든 화면에서 같은 위치
+const MOUNTS=[[-520,-380,230,240],[610,-250,260,210],[-300,560,240,260],[480,520,220,190],[-760,160,200,170],[120,-720,250,230],[820,220,190,160],[-90,180,170,150],[300,-80,150,130],[-560,-760,210,200],[680,-720,200,180],[-820,640,190,170]];
+for(const [x,z,r,h] of MOUNTS){
+  const m=new THREE.Mesh(new THREE.ConeGeometry(r,h,9),flat(0x6f7f6a));m.position.set(x,h/2,z);m.rotation.y=x;scene.add(m);
+  if(h>180){const s=new THREE.Mesh(new THREE.ConeGeometry(r*0.3,h*0.3,9),flat(0xeef3f6));s.position.set(x,h*0.85+1,z);s.rotation.y=x;scene.add(s)}
+}
+{ // 활주로와 건물 (크기 가늠용)
+  const rw=new THREE.Mesh(new THREE.BoxGeometry(60,1,520),flat(0x4a4d52));rw.position.set(60,0.5,330);scene.add(rw);
+  for(let i=0;i<10;i++){const l=new THREE.Mesh(new THREE.BoxGeometry(3,0.2,26),flat(0xe8e8e0));l.position.set(60,1.1,100+i*50);scene.add(l)}
+  for(let i=0;i<14;i++){const w=rnd(18,40),hh=rnd(10,34),b=new THREE.Mesh(new THREE.BoxGeometry(w,hh,rnd(18,40)),flat([0x9aa3ad,0xb9b1a4,0x8d949c,0xa89a8a][i%4]));b.position.set(140+rnd(0,180),hh/2,200+rnd(0,300));scene.add(b)}
+  const n=TOUCH?500:1500,geo=new THREE.ConeGeometry(1,1,5);geo.translate(0,0.5,0);const im=new THREE.InstancedMesh(geo,flat(0xffffff),n),d=new THREE.Object3D(),cc=new THREE.Color();
+  for(let i=0;i<n;i++){const a=rnd(0,6.283),r=rnd(40,2200);d.position.set(Math.cos(a)*r,0,Math.sin(a)*r);const s=rnd(4,8);d.scale.set(s,rnd(12,22),s);d.updateMatrix();im.setMatrixAt(i,d.matrix);cc.setHSL(rnd(0.28,0.36),rnd(0.3,0.45),rnd(0.2,0.32));im.setColorAt(i,cc)}
+  im.frustumCulled=false;if(im.instanceColor)im.instanceColor.needsUpdate=true;scene.add(im);
+  for(let i=0;i<(TOUCH?22:46);i++){const g=new THREE.Group(),a=rnd(0,6.283),r=rnd(0,2600);g.position.set(Math.cos(a)*r,rnd(260,760),Math.sin(a)*r);
+    for(let q=0;q<4;q++){const m=new THREE.Mesh(new THREE.SphereGeometry(1,7,5),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.78,fog:false}));m.position.set(rnd(-40,40),rnd(-8,8),rnd(-30,30));m.scale.set(rnd(40,80),rnd(14,24),rnd(30,60));g.add(m)}scene.add(g)}
+  const wall=new THREE.Mesh(new THREE.CylinderGeometry(R,R,CEIL,48,1,true),new THREE.MeshBasicMaterial({color:0xff4040,transparent:true,opacity:0.07,side:THREE.DoubleSide,depthWrite:false}));wall.position.y=CEIL/2;scene.add(wall); // 전투 구역 경계
+}
+// 방향 벡터: yaw(왼쪽이 +), pitch(위가 +) → 앞 방향
+const fwd=(yaw,pitch)=>new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
+function makeJet(color){ // 전투기 모델 (앞이 -z)
+  const g=new THREE.Group(),M=c=>new THREE.MeshPhongMaterial({color:c,flatShading:true,shininess:20}),add=(geo,c,x,y,z)=>{const m=new THREE.Mesh(geo,M(c));m.position.set(x,y,z);g.add(m);return m};
+  const body=add(new THREE.CylinderGeometry(0.95,0.7,10,8),color,0,0,0.5);body.rotation.x=Math.PI/2;
+  const nose=add(new THREE.ConeGeometry(0.7,3.4,8),0x3a3f46,0,0,-6.2);nose.rotation.x=-Math.PI/2;
+  add(new THREE.BoxGeometry(11.5,0.22,3.4),color,0,-0.1,1.2);                         // 주날개
+  add(new THREE.BoxGeometry(5,0.2,1.7),color,0,0,5.2);                                 // 수평 꼬리날개
+  add(new THREE.BoxGeometry(0.22,2.4,2),color,0,1.3,5);                                // 수직 꼬리날개
+  const can=add(new THREE.SphereGeometry(0.75,8,6),0x9fd0ff,0,0.7,-2.2);can.scale.set(1,0.8,2.2);
+  const fl=new THREE.Mesh(new THREE.ConeGeometry(0.6,3,8),new THREE.MeshBasicMaterial({color:0xffa030,transparent:true,opacity:0.85}));fl.rotation.x=Math.PI/2;fl.position.set(0,0,7.2);g.add(fl);g.userData.flame=fl;
+  g.scale.setScalar(1.5);return g;
+}
+
+// ================= 상태 =================
+const me={x:0,y:300,z:0,yaw:0,pitch:0,roll:0,ay:0,ap:0,spd:100,thr:0.6,boost:1,hp:MAX_HP,alive:false,mis:4,flares:3,gunT:0,misT:0,lockId:0,lockT:0,outT:0,crashSent:false};
+const keys={},joy={x:0,y:0},pad={x:0,y:0};let fireHeld=false,boostHeld=false,padFire=false,padBoost=false,lastPractice=false,sendT=0,respawnAt=0;
+let myJet=makeJet(0x3b82f6);myJet.visible=false;scene.add(myJet);
+
+// ---- 사운드 ----
+let ac,noiseBuf,eng;
+function actx(){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();if(!noiseBuf){noiseBuf=ac.createBuffer(1,ac.sampleRate*0.5,ac.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}}catch{}return ac}
+function beep(f,d,type,v){if(!actx())return;try{const o=ac.createOscillator(),g=ac.createGain();o.type=type||'square';o.frequency.value=f;g.gain.setValueAtTime(Math.max(0.0002,(v||0.05)*SET.vol*1.7),ac.currentTime);g.gain.exponentialRampToValueAtTime(0.0001,ac.currentTime+d);o.connect(g).connect(ac.destination);o.start();o.stop(ac.currentTime+d)}catch{}}
+function noise(vol,len,f0,f1){if(!actx())return;try{const t=ac.currentTime,s=ac.createBufferSource();s.buffer=noiseBuf;s.loop=true;const f=ac.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(f0,t);f.frequency.exponentialRampToValueAtTime(f1,t+len);
+  const g=ac.createGain();g.gain.setValueAtTime(Math.max(0.0002,vol*SET.vol),t);g.gain.exponentialRampToValueAtTime(0.0001,t+len);s.connect(f).connect(g).connect(ac.destination);s.start(t);s.stop(t+len+0.05)}catch{}}
+function engineOn(){if(!actx()||eng)return;try{const o=ac.createOscillator(),f=ac.createBiquadFilter(),g=ac.createGain();o.type='sawtooth';f.type='lowpass';f.frequency.value=500;g.gain.value=0.0001;o.connect(f).connect(g).connect(ac.destination);o.start();eng={o,g}}catch{}}
+function engineOff(){if(eng){try{eng.o.stop()}catch{}eng=null}}
+
+// ---- 이펙트: 파티클, 폭발, 예광탄 ----
+const parts=[],tracers=[],pGeo=new THREE.BoxGeometry(1,1,1),sGeo=new THREE.SphereGeometry(1,8,6);
+function burst(pos,color,n,speed,size,life){for(let i=0;i<n;i++){const m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color,transparent:true}));m.position.copy(pos);m.scale.setScalar(size*rnd(0.5,1.5));scene.add(m);
+  parts.push({m,v:new THREE.Vector3(rnd(-1,1),rnd(-1,1),rnd(-1,1)).normalize().multiplyScalar(speed*rnd(0.3,1)),t:life*rnd(0.6,1),t0:life,grav:6})}while(parts.length>500){const p=parts.shift();scene.remove(p.m);p.m.material.dispose()}}
+function puff(pos,color,size,life){const m=new THREE.Mesh(sGeo,new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.7}));m.position.copy(pos);m.scale.setScalar(size);scene.add(m);parts.push({m,v:new THREE.Vector3(0,1,0),t:life,t0:life,grav:0,grow:size*1.5})}
+function explode(pos,big){puff(pos,0xffc04a,big?18:8,0.35);burst(pos,0xff8a20,big?34:14,big?70:40,big?2.4:1.4,big?1.3:0.8);burst(pos,0x444444,big?20:8,big?40:24,big?3:1.8,big?1.8:1);
+  const d=pos.distanceTo(camera.position);noise(Math.max(0.1,1-d/900)*(big?1:0.6),big?0.9:0.5,1400,80)}
+function flareFx(pos){for(let i=0;i<5;i++){const m=new THREE.Mesh(sGeo,new THREE.MeshBasicMaterial({color:0xfff0a0,transparent:true}));m.position.copy(pos);m.scale.setScalar(1.6);scene.add(m);parts.push({m,v:new THREE.Vector3(rnd(-18,18),rnd(-30,-8),rnd(-18,18)),t:1.6,t0:1.6,grav:14})}beep(520,0.15,'triangle',0.04)}
+function tracer(a,b){const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),new THREE.LineBasicMaterial({color:0xffee88}));scene.add(l);tracers.push({l,t:0.05})}
+function updateFx(dt){
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.t-=dt;if(p.t<=0){scene.remove(p.m);p.m.material.dispose();parts.splice(i,1);continue}
+    p.v.y-=p.grav*dt;p.m.position.addScaledVector(p.v,dt);p.m.material.opacity=Math.min(1,p.t/p.t0*1.4);if(p.grow)p.m.scale.addScalar(p.grow*dt)}
+  for(let i=tracers.length-1;i>=0;i--){tracers[i].t-=dt;if(tracers[i].t<=0){scene.remove(tracers[i].l);tracers[i].l.geometry.dispose();tracers.splice(i,1)}}
+}
+
+// ---- 미사일 (추적) ----
+const missiles=[],mGeo=new THREE.CylinderGeometry(0.35,0.35,4.5,6);mGeo.rotateX(Math.PI/2);
+function spawnMissile(pos,dir,target,mine){const m=new THREE.Mesh(mGeo,new THREE.MeshBasicMaterial({color:0xf2f2f2}));m.position.copy(pos);scene.add(m);missiles.push({m,dir:dir.clone().normalize(),target,mine,life:6,fooled:false,tr:0});noise(0.5,0.6,2500,300)}
+function targetPos(id){if(id===myId)return me.alive?new THREE.Vector3(me.x,me.y,me.z):null;const p=G&&G.players[id];return p&&p.alive?p.g.position:null}
+function updateMissiles(dt){
+  for(let i=missiles.length-1;i>=0;i--){
+    const ms=missiles[i],pos=ms.m.position,tp=ms.fooled?null:targetPos(ms.target);ms.life-=dt;
+    if(tp){const want=tp.clone().sub(pos).normalize(),ang=ms.dir.angleTo(want),k=ang>0.0001?Math.min(1,1.7*dt/ang):1;ms.dir.lerp(want,k).normalize(); // 초당 약 97도까지 꺾음
+      if(pos.distanceTo(tp)<16){explode(pos.clone(),true);if(ms.mine)send({t:'jmis',target:ms.target});scene.remove(ms.m);missiles.splice(i,1);continue}}
+    pos.addScaledVector(ms.dir,250*dt);ms.m.lookAt(pos.clone().add(ms.dir));
+    ms.tr-=dt;if(ms.tr<=0){ms.tr=0.035;puff(pos.clone(),0xdddddd,1.6,0.7)}
+    if(ms.life<=0||pos.y<2){explode(pos.clone(),false);scene.remove(ms.m);missiles.splice(i,1)}
+  }
+}
+
+// ================= 게임 진행 =================
+function setState(p,q){ // 서버에서 받은 다른 전투기의 위치: 이전 위치와 비교해 속도를 추정 (끊김 없이 그리기 위해)
+  const now=performance.now(),o=p.st;let spd=p.st?p.st.spd:100;
+  if(o){const dtn=(now-o.t)/1000;if(dtn>0.01&&dtn<0.5)spd=Math.hypot(q.x-o.x,q.y-o.y,q.z-o.z)/dtn}
+  p.st={x:q.x,y:q.y,z:q.z,yaw:q.yaw,pitch:q.pitch,roll:q.roll||0,t:now,spd:Math.min(260,spd)};
+}
+function makePlayer(d){
+  const col=d.cos&&d.cos.color>0?[0,0x6b8e23,0x1f3a93,0xc0392b,0x8e44ad,0x222222,0xf2f2f2,0xd4af37][d.cos.color]||0xc0392b:new THREE.Color().setHSL((d.id*0.37)%1,0.65,0.5).getHex();
+  const g=makeJet(col),a=Math.atan2(d.z,d.x);g.position.set(Math.cos(a)*520,300,Math.sin(a)*520);scene.add(g);
+  const mk=document.createElement('div');mk.className='mk';mk.innerHTML='<span></span>';$('marks').appendChild(mk);
+  return{id:d.id,nick:d.nick,g,mk,alive:true,hp:MAX_HP,kills:0,deaths:0,st:null,bot:false};
+}
+function removePlayer(id){const p=G.players[id];if(!p)return;scene.remove(p.g);p.mk.remove();delete G.players[id];renderSB()}
+function spawnMe(sx,sz){
+  const a=Math.atan2(sz,sx);Object.assign(me,{x:Math.cos(a)*520,z:Math.sin(a)*520,y:rnd(280,400),pitch:0,ap:0,roll:0,spd:100,thr:0.6,boost:1,hp:MAX_HP,alive:true,mis:4,flares:3,gunT:0,misT:0,lockId:0,lockT:0,outT:0,crashSent:false});
+  me.yaw=me.ay=Math.atan2(me.x,me.z); // 중앙을 바라보고 출발
+  myJet.visible=true;$('dead').style.display='none';camReset=true;hud();
+}
+function beginGame(m){
+  endLocal();lastPractice=!!m.practice;
+  G={limit:m.limit,practice:!!m.practice,botId:m.bot||0,startAt:performance.now()+(m.countdown||0),players:{},streak:0,meKills:0,meDeaths:0,over:false};
+  for(const p of m.players)if(p.id!==myId)G.players[p.id]=makePlayer(p);
+  if(G.practice&&G.players[G.botId]){const b=G.players[G.botId];b.bot=true;b.ai={x:b.g.position.x,y:320,z:b.g.position.z,yaw:Math.atan2(b.g.position.x,b.g.position.z),pitch:0,roll:0,evade:0,dir:1,gun:0}}
+  const mine=m.players.find(p=>p.id===myId);spawnMe(mine.x,mine.z);
+  setScr('game');engineOn();renderSB();
+  $('top').innerHTML=G.practice?'🎯 연습 비행 <small>(끝나지 않음 · 나가려면 '+(TOUCH?'✕ 나가기':'Esc')+')</small>':'목표 '+G.limit+'킬';
+}
+function endLocal(){
+  if(G){for(const id in G.players){scene.remove(G.players[id].g);G.players[id].mk.remove()}G=null}
+  for(const ms of missiles)scene.remove(ms.m);missiles.length=0;me.alive=false;myJet.visible=false;engineOff();
+  $('hud').classList.remove('over');$('feed').innerHTML='';$('warn').textContent='';
+}
+function onHp(m){
+  if(!G)return;
+  if(m.id===myId){const was=me.hp;me.hp=m.hp;if(m.hp<was){beep(90,0.15,'sawtooth',0.08);const h=$('hurt');h.style.opacity=1;setTimeout(()=>h.style.opacity=0,200)}hud()}
+  else if(G.players[m.id])G.players[m.id].hp=m.hp;
+}
+function feed(html){const d=document.createElement('div');d.innerHTML=html;$('feed').prepend(d);setTimeout(()=>d.remove(),5000)}
+function onKill(m){
+  if(!G)return;const lab=id=>id===myId?'나':'상대';
+  feed(m.killer===m.victim?lab(m.victim)+' 추락':lab(m.killer)+' ➜ '+lab(m.victim));
+  if(m.killer===myId&&m.victim!==myId){G.meKills=m.kills;G.streak++;const el=$('kmsg');el.textContent='✈ '+(['','격추!','더블 격추!','트리플 격추!','쿼드라 격추!'][G.streak]||'에이스! ×'+G.streak);el.className='h';void el.offsetWidth;el.className='h show';beep(880,0.25,'triangle',0.1);setTimeout(()=>beep(1320,0.3,'triangle',0.1),90)}
+  else if(G.players[m.killer])G.players[m.killer].kills=m.kills;
+  if(m.victim===myId){
+    G.meDeaths=m.deaths;G.streak=0;me.alive=false;me.hp=0;myJet.visible=false;explode(new THREE.Vector3(me.x,me.y,me.z),true);
+    respawnAt=performance.now()+3000;$('dead').style.display='block';hud();
+  }else{const v=G.players[m.victim];if(v){v.deaths=m.deaths;v.alive=false;v.g.visible=false;explode(v.g.position.clone(),true)}}
+  renderSB();
+}
+function onRespawn(m){
+  if(!G)return;
+  if(m.id===myId)spawnMe(m.x,m.z);
+  else{const p=G.players[m.id];if(!p)return;p.alive=true;p.hp=MAX_HP;p.g.visible=true;const a=Math.atan2(m.z,m.x),x=Math.cos(a)*520,z=Math.sin(a)*520;p.st=null;p.g.position.set(x,320,z);
+    if(p.bot)Object.assign(p.ai,{x,y:320,z,yaw:Math.atan2(x,z),pitch:0,evade:0})}
+}
+function onEnd(m){
+  const show=()=>{endLocal();$('rwin').textContent=m.winner||'게임 종료';$('rsub').textContent=m.reason||'';
+    $('rscores').innerHTML=m.scores.sort((a,b)=>(a.left?1:0)-(b.left?1:0)||b.kills-a.kills).map((s,i)=>'<div class="pl"'+(s.left?' style="opacity:.55"':'')+'><span>'+(i+1)+'. '+esc(s.nick)+(s.left?' <small>(나감 · 최하위)</small>':'')+'</span><span>'+s.kills+' 격추 / '+s.deaths+' 피격추</span></div>').join('');setScr('result')};
+  if(!G||m.reason){show();return}
+  G.over=true;$('hud').classList.add('over');$('endmsg').innerHTML='경기 종료<small>🏆 '+esc(m.winner||'')+'</small>';
+  [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,0.22,'triangle',0.09),i*130));setTimeout(show,3000);
+}
+function renderSB(){if(!G)return;const top=Math.max(0,...Object.values(G.players).map(p=>p.kills));$('sb').innerHTML='<div style="color:#ffe27a">내 격추 '+G.meKills+' · 피격추 '+G.meDeaths+'</div><div>'+(G.practice?'봇 격추 ':'상대 최다 ')+top+'</div>'}
+function hud(){
+  $('hpfill').style.width=clamp(me.hp/MAX_HP*100,0,100)+'%';$('hpfill').style.background=me.hp>MAX_HP*0.6?'#3ecf6e':me.hp>MAX_HP*0.3?'#e6b93c':'#e5484d';$('hpn').textContent=Math.max(0,Math.ceil(me.hp));
+}
+let warnT=0;function warnMsg(t,ms){$('warn').textContent=t;warnT=performance.now()+(ms||1500)}
+function hitFx(dmg){const c=$('gcross');c.classList.add('hit');clearTimeout(hitFx.t);hitFx.t=setTimeout(()=>c.classList.remove('hit'),120);beep(dmg>50?900:600,0.05,'triangle',0.05)}
+
+// ---- 내 전투기 조종 ----
+function crash(why){if(me.crashSent||!me.alive)return;me.crashSent=true;warnMsg(why,2500);send({t:'jcrash'})}
+function fireGun(){
+  const F=fwd(me.yaw,me.pitch),O=new THREE.Vector3(me.x,me.y,me.z),side=new THREE.Vector3(Math.cos(me.yaw),0,-Math.sin(me.yaw)).multiplyScalar((me.gunSide=!me.gunSide)?5:-5);
+  F.x+=rnd(-0.006,0.006);F.y+=rnd(-0.006,0.006);F.z+=rnd(-0.006,0.006);F.normalize();
+  let best=null,bt=520; // 500m 안에서 탄도와 가장 가까운 적 (멀수록 판정을 조금 넉넉하게)
+  for(const id in G.players){const p=G.players[id];if(!p.alive)continue;const d=p.g.position.clone().sub(O),t=d.dot(F);if(t<0||t>500)continue;if(d.addScaledVector(F,-t).length()<7+t*0.014&&t<bt){bt=t;best=p}}
+  tracer(O.clone().add(side),O.clone().addScaledVector(F,best?bt:500));noise(0.35,0.08,3000,600);
+  if(best){send({t:'jhit',target:best.id});burst(best.g.position.clone(),0xffcc66,3,25,0.9,0.35)}
+}
+function fireMissile(){
+  if(!G||!me.alive||G.over||me.misT>0||performance.now()<G.startAt)return;
+  if(me.mis<=0){warnMsg('미사일이 없어요',1000);return}
+  if(!(me.lockId&&me.lockT>=1)){warnMsg('적을 조준해 LOCK이 뜨면 발사하세요',1200);return}
+  me.mis--;me.misT=0.8;send({t:'jfire',target:me.lockId});spawnMissile(new THREE.Vector3(me.x,me.y-2,me.z),fwd(me.yaw,me.pitch),me.lockId,true);
+}
+function fireFlare(){if(!G||!me.alive||G.over||me.flares<=0)return;me.flares--;send({t:'jflare'});flareFx(new THREE.Vector3(me.x,me.y,me.z));for(const ms of missiles)if(ms.target===myId&&Math.random()<0.6)ms.fooled=true}
+function flyMe(dt){
+  // 입력 → 조준 방향 (기체는 조준 방향을 따라 선회)
+  const kx=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x+pad.x,ky=(keys.ArrowUp?1:0)-(keys.ArrowDown?1:0)-joy.y-pad.y;
+  me.ay-=kx*1.35*dt;me.ap=clamp(me.ap+ky*1.0*dt,-1.25,1.25);
+  me.ay=me.yaw+clamp(wrap(me.ay-me.yaw),-1.2,1.2);
+  if(me.y>CEIL){me.ap=Math.min(me.ap,-0.2);warnMsg('고도 한계! 내려가세요',600)}
+  me.thr=clamp(me.thr+((keys.KeyW?1:0)-(keys.KeyS?1:0))*0.5*dt,0,1);
+  const boosting=(keys.ShiftLeft||boostHeld||padBoost)&&me.boost>0.02;me.boost=clamp(me.boost+(boosting?-0.28:0.07)*dt,0,1);me.boosting=boosting;
+  me.spd+=((60+me.thr*60+(boosting?60:0)-Math.sin(me.pitch)*22)-me.spd)*Math.min(1,dt*0.9);
+  const maxYaw=1.2*(1-(me.spd-60)/420),yr=clamp(wrap(me.ay-me.yaw)*2.5,-maxYaw,maxYaw);me.yaw+=yr*dt;
+  me.pitch+=clamp((me.ap-me.pitch)*2.5,-0.95,0.95)*dt;
+  me.roll+=(clamp(yr*1.05,-1.25,1.25)-me.roll)*Math.min(1,dt*5);
+  const F=fwd(me.yaw,me.pitch);me.x+=F.x*me.spd*dt;me.y+=F.y*me.spd*dt;me.z+=F.z*me.spd*dt;
+  // 충돌 / 구역
+  if(me.y<4)crash('지면에 추락!');
+  for(const [mx,mz,r,h] of MOUNTS){const d=Math.hypot(me.x-mx,me.z-mz);if(d<r&&me.y<h*(1-d/r)+5){crash('산에 충돌!');break}}
+  if(Math.hypot(me.x,me.z)>R){me.outT+=dt;warnMsg('전투 구역 이탈! '+Math.max(0,Math.ceil(8-me.outT))+'초 안에 돌아오세요',300);if(me.outT>8)crash('전투 구역 이탈')}else me.outT=0;
+  // 무장
+  me.gunT-=dt;me.misT-=dt;
+  if((fireHeld||padFire)&&me.gunT<=0){me.gunT=0.085;fireGun()}
+  // 조준 고정(LOCK): 기수 앞 17도, 700m 안의 가장 가까운 적을 1초 조준
+  let best=0,bd=700;const O=new THREE.Vector3(me.x,me.y,me.z);
+  for(const id in G.players){const p=G.players[id];if(!p.alive)continue;const d=p.g.position.clone().sub(O),L=d.length();if(L<bd&&d.normalize().angleTo(F)<0.3){bd=L;best=+id}}
+  if(best&&best===me.lockId){const was=me.lockT;me.lockT+=dt;if(was<1&&me.lockT>=1)beep(1500,0.2,'square',0.05)}else{me.lockId=best;me.lockT=0}
+}
+// ---- 연습 비행 봇: 나를 쫓아와 기총을 쏜다. 꼬리를 잡히면 급선회로 피한다 ----
+function botAI(dt){
+  const b=G.players[G.botId];if(!b||!b.alive)return;const ai=b.ai;
+  if(performance.now()>=G.startAt){
+    let ty=0,tp=0;const dx=me.x-ai.x,dy=me.y-ai.y,dz=me.z-ai.z,d=Math.hypot(dx,dy,dz)||1,F=fwd(ai.yaw,ai.pitch),dot=(dx*F.x+dy*F.y+dz*F.z)/d;
+    if(me.alive){ty=Math.atan2(-dx,-dz);tp=Math.asin(clamp(dy/d,-1,1))}else{ty=ai.yaw+0.5;tp=0}
+    if(ai.evade>0){ai.evade-=dt;ty=ai.yaw+ai.dir*1.4;tp=0.2*ai.dir}
+    else if(me.alive&&d<320){const MF=fwd(me.yaw,me.pitch),behind=(-dx*MF.x-dy*MF.y-dz*MF.z)/d;if(behind>0.85&&Math.random()<dt*0.6){ai.evade=rnd(2,4);ai.dir=Math.random()<0.5?1:-1}} // 내가 봇의 꼬리를 물면 회피
+    if(Math.hypot(ai.x,ai.z)>R*0.82)ty=Math.atan2(ai.x,ai.z);        // 구역 끝이면 중앙으로
+    if(ai.y<270)tp=Math.max(tp,0.4);if(ai.y>CEIL-90)tp=Math.min(tp,-0.3); // 산보다 높게, 한계 고도보다 낮게
+    const yr=clamp(wrap(ty-ai.yaw)*2,-0.8,0.8);ai.yaw+=yr*dt;ai.pitch+=clamp((clamp(tp,-0.7,0.7)-ai.pitch)*2,-0.55,0.55)*dt;ai.roll+=(clamp(yr*1.2,-1.2,1.2)-ai.roll)*Math.min(1,dt*5);
+    const F2=fwd(ai.yaw,ai.pitch),spd=95;ai.x+=F2.x*spd*dt;ai.y+=F2.y*spd*dt;ai.z+=F2.z*spd*dt;
+    ai.gun-=dt;
+    if(me.alive&&dot>0.994&&d<430&&ai.gun<=0){ai.gun=0.33;const O=new THREE.Vector3(ai.x,ai.y,ai.z);tracer(O,new THREE.Vector3(me.x+rnd(-6,6),me.y+rnd(-6,6),me.z+rnd(-6,6)));noise(Math.max(0.08,0.35*(1-d/600)),0.08,3000,600);if(Math.random()<0.42)send({t:'bothit'})}
+  }
+  b.g.position.set(ai.x,ai.y,ai.z);b.g.rotation.set(ai.pitch,ai.yaw,ai.roll,'YXZ');
+}
+function updateRemotes(dt){
+  const now=performance.now();
+  for(const id in G.players){
+    const p=G.players[id];if(p.bot||!p.st||!p.alive)continue;
+    const s=p.st,age=Math.min(0.2,(now-s.t)/1000),F=fwd(s.yaw,s.pitch); // 마지막 위치에서 진행 방향으로 조금 앞을 예측
+    p.g.position.lerp(new THREE.Vector3(s.x+F.x*s.spd*age,s.y+F.y*s.spd*age,s.z+F.z*s.spd*age),Math.min(1,dt*14));
+    const k=Math.min(1,dt*10);p.g.rotation.order='YXZ';p.g.rotation.y+=wrap(s.yaw-p.g.rotation.y)*k;p.g.rotation.x+=(s.pitch-p.g.rotation.x)*k;p.g.rotation.z+=(s.roll-p.g.rotation.z)*k;
+  }
+}
+// ---- 화면 표시: 적 표식, 레이더, 계기 ----
+const V=new THREE.Vector3();
+function updateHud(){
+  const W=innerWidth,H=innerHeight,now=performance.now();
+  for(const id in G.players){
+    const p=G.players[id],mk=p.mk;if(!p.alive||!me.alive){mk.style.display='none';continue}
+    mk.style.display='block';const d=Math.round(p.g.position.distanceTo(V.set(me.x,me.y,me.z)));
+    V.copy(p.g.position).applyMatrix4(camera.matrixWorldInverse);const cx=V.x,cy=V.y,front=V.z<0;
+    V.copy(p.g.position).project(camera);const sx=(V.x*0.5+0.5)*W,sy=(-V.y*0.5+0.5)*H,on=front&&sx>20&&sx<W-20&&sy>20&&sy<H-20;
+    const lock=+id===me.lockId;mk.className='mk'+(on?'':' off')+(lock?(me.lockT>=1?' locked':' lock'):'');
+    if(on){mk.style.left=sx+'px';mk.style.top=sy+'px';mk.firstChild.textContent=(lock&&me.lockT>=1?'LOCK ':'')+d+'m'}
+    else{const a=Math.atan2(cx,cy),rad=Math.min(W,H)*0.42;mk.style.left=(W/2+Math.sin(a)*rad)+'px';mk.style.top=(H/2-Math.cos(a)*rad)+'px';mk.style.setProperty('--a',a+'rad')} // 화면 밖: 방향 화살표
+  }
+  // 기총 조준점: 기수 300m 앞
+  const F=fwd(me.yaw,me.pitch);V.set(me.x+F.x*300,me.y+F.y*300,me.z+F.z*300).project(camera);const gc=$('gcross').style;gc.left=(V.x*0.5+0.5)*W+'px';gc.top=(-V.y*0.5+0.5)*H+'px';gc.display=me.alive&&V.z<1?'block':'none';
+  $('info').innerHTML='속도 '+Math.round(me.spd*3.6)+' km/h<br>고도 '+Math.round(me.y)+' m';
+  $('wep').innerHTML='🚀 미사일 '+me.mis+' · ✨ 플레어 '+me.flares+'<br>부스터 <span id="boostbar"><span id="boostfill" style="display:block;width:'+Math.round(me.boost*100)+'%"></span></span>';
+  if(now>warnT)$('warn').textContent='';
+  const cd=G.startAt-now;$('count').textContent=cd>0?Math.ceil(cd/1000):(cd>-800?'출격!':'');
+  if(!me.alive&&respawnAt&&!G.over)$('dead').innerHTML='격추됨<br><small>'+Math.max(0,Math.ceil((respawnAt-now)/1000))+'초 후 재출격</small>';
+  // 레이더
+  const c=$('radar').getContext('2d'),S=75,k=S/(R*1.15);c.clearRect(0,0,150,150);
+  c.strokeStyle='#ff505066';c.lineWidth=1.5;c.beginPath();c.arc(S,S,R*k,0,7);c.stroke();
+  c.fillStyle='#8a9a8a88';for(const [mx,mz,r] of MOUNTS){c.beginPath();c.arc(S+mx*k,S+mz*k,r*k*0.6,0,7);c.fill()}
+  for(const id in G.players){const p=G.players[id];if(!p.alive)continue;c.fillStyle='#ff4040';c.beginPath();c.arc(S+p.g.position.x*k,S+p.g.position.z*k,3.5,0,7);c.fill()}
+  const fx=-Math.sin(me.yaw),fz=-Math.cos(me.yaw),px=S+me.x*k,pz=S+me.z*k;c.fillStyle='#ffe27a';c.beginPath();c.moveTo(px+fx*8,pz+fz*8);c.lineTo(px-fx*5-fz*5,pz-fz*5+fx*5);c.lineTo(px-fx*5+fz*5,pz-fz*5-fx*5);c.closePath();c.fill();
+}
+
+// ================= 입력 =================
+const canvas=renderer.domElement;
+const locked=()=>document.pointerLockElement===canvas;
+let padMode=false;const playing=()=>locked()||TOUCH||padMode;
+function updatePause(){$('pause').style.display=(scr==='game'&&!playing())?'flex':'none'}
+$('pause').onclick=()=>{padMode=false;canvas.requestPointerLock()};
+document.addEventListener('pointerlockchange',()=>{if(!locked())fireHeld=false;updatePause()});
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;if(e.code==='Space'){e.preventDefault();fireMissile()}if(e.code==='KeyF')fireFlare()});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('mousedown',e=>{if(scr!=='game'||!playing()||TOUCH)return;if(e.button===0)fireHeld=true;if(e.button===2)fireMissile()});
+addEventListener('mouseup',e=>{if(e.button===0&&!TOUCH)fireHeld=false});
+addEventListener('contextmenu',e=>{if(scr==='game')e.preventDefault()});
+addEventListener('blur',()=>{fireHeld=false});
+addEventListener('mousemove',e=>{if(!locked()||!me.alive)return;const k=0.0016*SET.sens;me.ay-=e.movementX*k;me.ap=clamp(me.ap-e.movementY*k,-1.25,1.25)});
+{ // 터치: 왼쪽 조이스틱(방향), 오른쪽 버튼들
+  const jb=$('joybase'),jk=$('joyknob');let tj=null;
+  const mv=t=>{const r=jb.getBoundingClientRect(),Rr=r.width*0.36;let dx=t.clientX-(r.left+r.width/2),dy=t.clientY-(r.top+r.height/2);const d=Math.hypot(dx,dy);if(d>Rr){dx*=Rr/d;dy*=Rr/d}joy.x=dx/Rr;joy.y=dy/Rr;jk.style.transform='translate(calc(-50% + '+dx+'px),calc(-50% + '+dy+'px))'};
+  jb.addEventListener('touchstart',e=>{e.preventDefault();if(tj!==null)return;tj=e.changedTouches[0].identifier;mv(e.changedTouches[0])},{passive:false});
+  jb.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)if(t.identifier===tj)mv(t)},{passive:false});
+  const end=e=>{for(const t of e.changedTouches)if(t.identifier===tj){tj=null;joy.x=joy.y=0;jk.style.transform='translate(-50%,-50%)'}};jb.addEventListener('touchend',end);jb.addEventListener('touchcancel',end);
+  const tb=(id,down,up)=>{const el=$(id);el.addEventListener('touchstart',e=>{e.preventDefault();el.classList.add('on');if(down)down()},{passive:false});const en=e=>{e.preventDefault();el.classList.remove('on');if(up)up()};el.addEventListener('touchend',en);el.addEventListener('touchcancel',en)};
+  tb('t-gun',()=>{fireHeld=true},()=>{fireHeld=false});tb('t-mis',()=>fireMissile());tb('t-flare',()=>fireFlare());tb('t-boost',()=>{boostHeld=true},()=>{boostHeld=false});
+}
+let padPrev=[];
+function pollPad(){
+  const gps=navigator.getGamepads?navigator.getGamepads():[];let gp=null;for(const p of gps)if(p&&p.connected){gp=p;break}
+  if(!gp){padPrev=[];pad.x=pad.y=0;padFire=padBoost=false;return}
+  const now=gp.buttons.map(b=>b.pressed),pr=i=>now[i]&&!padPrev[i],dz=v=>Math.abs(v)<0.15?0:v;
+  if(!playing()){padFire=false;if(now.some(Boolean)&&!padPrev.some(Boolean)){padMode=true;updatePause()}padPrev=now;return}
+  pad.x=dz(gp.axes[0]||0);pad.y=dz(gp.axes[1]||0);padFire=!!now[7];padBoost=!!now[0];
+  if(pr(5))fireMissile();if(pr(2))fireFlare();if(pr(9)&&!TOUCH){padMode=false;updatePause()}
+  padPrev=now;
+}
+
+// ================= 메인 루프 =================
+const clock=new THREE.Clock();let orbit=0,camReset=true;const camPos=new THREE.Vector3();
+function loop(){
+  requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),0.05);
+  if(scr==='game'&&G){
+    pollPad();
+    const frozen=performance.now()<G.startAt||G.over;
+    if(me.alive&&!frozen)flyMe(dt);
+    if(G.practice&&!G.over)botAI(dt);
+    updateRemotes(dt);updateMissiles(dt);
+    myJet.position.set(me.x,me.y,me.z);myJet.rotation.set(me.pitch,me.yaw,me.roll,'YXZ');myJet.userData.flame.scale.z=0.5+me.thr+(me.boosting?1.6:0);
+    for(const id in G.players)G.players[id].g.userData.flame.scale.z=1.2;
+    sendT-=dt;if(sendT<=0&&me.alive){sendT=0.05;send({t:'state',x:me.x,y:me.y,z:me.z,yaw:me.yaw,pitch:me.pitch,roll:me.roll})}
+    // 추적 카메라: 조준 방향 뒤에서 기체를 봄
+    const A=fwd(me.ay,me.ap),want=new THREE.Vector3(me.x-A.x*30,me.y-A.y*30+7,me.z-A.z*30);
+    if(camReset){camPos.copy(want);camReset=false}else camPos.lerp(want,Math.min(1,dt*9));
+    camera.position.copy(camPos);camera.lookAt(me.x+A.x*90,me.y+A.y*90+2,me.z+A.z*90);
+    const tf=70+(me.boosting?10:0);if(Math.abs(camera.fov-tf)>0.1){camera.fov+=(tf-camera.fov)*Math.min(1,dt*6);camera.updateProjectionMatrix()}
+    camera.updateMatrixWorld();updateHud();
+    if(eng){eng.o.frequency.value=55+me.spd*0.75;eng.g.gain.value=me.alive?0.035*SET.vol*(me.boosting?1.6:1):0.0001}
+  }else{orbit+=dt*0.05;camera.position.set(Math.cos(orbit)*700,420,Math.sin(orbit)*700);camera.lookAt(0,120,0);if(Math.abs(camera.fov-70)>0.1){camera.fov=70;camera.updateProjectionMatrix()}}
+  updateFx(dt);renderer.render(scene,camera);
+}
+loop();connect();
+</script>
+</body>
+</html>
