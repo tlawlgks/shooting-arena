@@ -121,12 +121,21 @@
     const f = SKIN_FINISH[Math.floor((i - 1) / 200)], c = SKIN_COLORS[Math.floor(((i - 1) % 200) / 10)], gr = (i - 1) % 10;
     SKINS.push({ n: f[0] + ' ' + c[0] + ' ' + GRADES[gr], lv: i, v: hsl(c[1], f[1] * c[2], f[2] + (f[3] - f[2]) * gr / 9) || 0x010101 });
   }
+  // 전투기 스킨 1000개 (도그파이트): 도장 5종 x 색 20종 x 10단계. v=기체 색, acc=포인트(줄무늬) 색, fin=마감(0 무광 ~ 4 전설)
+  const JETS = [{ n: '기본', lv: 1, v: 0, acc: 0, fin: 0 }];
+  for (let i = 1; i <= 1000; i++) {
+    const f = SKIN_FINISH[Math.floor((i - 1) / 200)], c = SKIN_COLORS[Math.floor(((i - 1) % 200) / 10)], gr = (i - 1) % 10;
+    JETS.push({ n: f[0] + ' ' + c[0] + ' ' + GRADES[gr], lv: i,
+      v: hsl(c[1], f[1] * c[2] * 0.85, Math.max(0.18, f[2] + (f[3] - f[2]) * gr / 9 - 0.06)) || 0x010101,
+      acc: hsl((c[1] + 40) % 360, 0.9, 0.58) || 0x010101, fin: Math.floor((i - 1) / 200) });
+  }
   // 레벨 보상: lv 이상이면 선택 가능. 0번은 항상 기본값
   L.REWARDS = {
     color: [ // 캐릭터 색 (개인전: 몸 전체 / 팀전: 팔)
       { n: '기본', lv: 1, v: 0 }, { n: '올리브', lv: 2, v: 0x6b8e23 }, { n: '네이비', lv: 3, v: 0x1f3a93 }, { n: '크림슨', lv: 5, v: 0xc0392b },
       { n: '퍼플', lv: 7, v: 0x8e44ad }, { n: '블랙', lv: 10, v: 0x222222 }, { n: '화이트', lv: 12, v: 0xf2f2f2 }, { n: '골드', lv: 15, v: 0xd4af37 }],
     skin: SKINS, // 총 스킨 1000개: 레벨 N이면 N번 스킨까지 선택 가능
+    jet: JETS,   // 전투기 스킨 1000개 (도그파이트)
     title: TITLES, // 칭호 1000개: 레벨 N이면 N번 칭호까지 선택 가능 (대기실, 랭킹, 프로필에 표시)
   };
   g.REWARDS = L.REWARDS;

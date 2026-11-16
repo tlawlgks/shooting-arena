@@ -412,11 +412,11 @@ function onMsg(m){
   switch(m.t){
     case 'hello':myId=m.id;break;
     case 'err':showErr(m.msg);break;
-    case 'authed':ME={user:m.user,guest:!!m.guest,stats:m.stats||null,cos:m.cos||{color:0,skin:0,title:0}};if(m.token){try{localStorage.setItem('token',m.token)}catch{}}$('lp').value='';$('lmsg').textContent='';renderProfile();syncLayout(m);if(screen==='login')setScreen('menu');break;
+    case 'authed':ME={user:m.user,guest:!!m.guest,stats:m.stats||null,cos:m.cos||{color:0,skin:0,title:0,jet:0}};if(m.token){try{localStorage.setItem('token',m.token)}catch{}}$('lp').value='';$('lmsg').textContent='';renderProfile();syncLayout(m);if(screen==='login')setScreen('menu');break;
     case 'autherr':if(m.expired){try{localStorage.removeItem('token')}catch{}}else $('lmsg').textContent=m.msg;break;
     case 'loggedout':ME=null;setScreen('login');break;
     case 'stats':if(ME&&!ME.guest){const old=ME.stats?ME.stats.level:m.stats.level;ME.stats=m.stats;renderProfile();
-      if(m.stats.level>old){const nw=[];REWARDS.color.forEach(it=>{if(it.lv>old&&it.lv<=m.stats.level)nw.push(it.n)});for(const [k,lab] of [['skin','스킨 '],['title','칭호 ']]){const tt=REWARDS[k][Math.min(m.stats.level,REWARDS[k].length-1)];if(tt)nw.push(lab+tt.n)}showErr('🎉 레벨 업! Lv.'+m.stats.level+(nw.length?' · 새 보상: '+nw.join(', '):''))}}break;
+      if(m.stats.level>old){const nw=[];REWARDS.color.forEach(it=>{if(it.lv>old&&it.lv<=m.stats.level)nw.push(it.n)});for(const [k,lab] of [['skin','총 스킨 '],['jet','전투기 '],['title','칭호 ']]){const tt=REWARDS[k][Math.min(m.stats.level,REWARDS[k].length-1)];if(tt)nw.push(lab+tt.n)}showErr('🎉 레벨 업! Lv.'+m.stats.level+(nw.length?' · 새 보상: '+nw.join(', '):''))}}break;
     case 'cos':if(ME){ME.cos=m.cos;renderProfile();if(screen==='cos')renderCos()}break;
     case 'throw':if(G)spawnNade(m.k,m.p,m.v,false);break;
     case 'air':if(G)airStrike(m);break;
@@ -465,10 +465,10 @@ function renderCos(){ // 레벨 보상 선택 화면 (색은 버튼, 총 스킨�
     let opts='<option value="0">'+none+'</option>';for(let i=top;i>=1;i--)opts+='<option value="'+i+'"'+(cos[k]===i?' selected':'')+'>Lv.'+i+' · '+T[i].n+'</option>';
     return '<h3>'+title+' <small style="color:#9fb0cc;font-weight:400">· 레벨마다 1개씩, 총 '+(T.length-1)+'개</small></h3>'
       +(g?'<span class="cositem lock">🔒 로그인하면 레벨마다 하나씩 받아요</span>'
-         :(k==='skin'?'<i class="swb" style="background:'+(cur.v?hex(cur.v):'#222')+'"></i>':'')+'<select data-pick="'+k+'" style="max-width:62%">'+opts+'</select> <button class="sm" data-best="'+k+'">가장 높은 것 쓰기</button>'
+         :((k==='skin'||k==='jet')?'<i class="swb" style="background:'+(cur.v?hex(cur.v):'#222')+'"></i>':'')+'<select data-pick="'+k+'" style="max-width:62%">'+opts+'</select> <button class="sm" data-best="'+k+'">가장 높은 것 쓰기</button>'
           +'<div style="color:#9fb0cc;font-size:13px;margin-top:6px">지금 쓸 수 있는 가장 높은 것: <b style="color:#ffd24a">'+(top?T[top].n:none)+'</b>'+(next?' · 다음: '+next.n+' (Lv.'+next.lv+')':' · 전부 얻었어요!')+'</div>');
   };
-  $('cosbody').innerHTML=sec('color','캐릭터 색 (개인전: 몸 전체 · 팀전: 팔)')+pick('skin','총 스킨','기본')+pick('title','칭호 (대기실·랭킹·프로필에 표시)','없음');
+  $('cosbody').innerHTML=sec('color','캐릭터 색 (개인전: 몸 전체 · 팀전: 팔)')+pick('skin','총 스킨','기본')+pick('jet','전투기 스킨 (도그파이트)','기본')+pick('title','칭호 (대기실·랭킹·프로필에 표시)','없음');
   $('cosbody').querySelectorAll('.cositem').forEach(el=>el.onclick=()=>{
     if(el.classList.contains('lock')){showErr(g?'로그인이 필요해요':'레벨이 부족해요');return}
     send(Object.assign({t:'cos'},cos,{[el.dataset.k]:+el.dataset.i}));

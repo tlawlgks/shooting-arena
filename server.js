@@ -127,11 +127,11 @@ function cleanLayout(d) {
   if (d.tbOp != null && Number.isFinite(op)) out.tbOp = clampN(op, 0.2, 1);
   return out;
 }
-const NO_COS = { color: 0, skin: 0, title: 0 };
+const NO_COS = { color: 0, skin: 0, title: 0, jet: 0 };
 const cosOf = p => (p.user && users[p.user] && users[p.user].cos) || NO_COS;
 function cleanCos(u, d) { // 레벨이 모자란 보상은 기본값으로
   const lv = levelOf(u.stats.xp), out = {};
-  for (const k of ['color', 'skin', 'title']) { const i = Math.floor(+((d || {})[k])); const item = REWARDS[k][i]; out[k] = (item && lv >= item.lv) ? i : 0; }
+  for (const k of ['color', 'skin', 'title', 'jet']) { const i = Math.floor(+((d || {})[k])); const item = REWARDS[k][i]; out[k] = (item && lv >= item.lv) ? i : 0; }
   return out;
 }
 const statOf = c => (c.user && users[c.user]) ? users[c.user].stats : null;
@@ -368,7 +368,8 @@ wss.on('connection', ws => {
         startGame(r); break;
       case 'state':
         if (!r || !(r.state === 'play' ? c.alive : Date.now() < (r.outroUntil || 0))) break; // 종료 연출 중에도 위치는 계속 전달
-        c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0, roll: +m.roll || 0 }; break;
+        c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0, roll: +m.roll || 0,
+          q: (Array.isArray(m.q) && m.q.length === 4 && m.q.every(Number.isFinite)) ? m.q : null }; break; // 전투기 자세(쿼터니언)
       case 'throw': { // 수류탄·연막탄 던지기: 개수 확인 후 다른 사람들에게 궤적 전달
         if (!r || r.state !== 'play' || !c.alive || Date.now() < (r.startAt || 0)) break;
         const k = m.k === 'smoke' ? 'smoke' : 'frag';
@@ -430,6 +431,9 @@ wss.on('connection', ws => {
         if (!v || v === c || !v.alive || Date.now() < (v.prot || 0)) break;
         damage(r, c, v, JET.missile, false); break;
       }
+      case 'jlock': // 무유도로 쏜 미사일이 비행 중 목표를 잡음 (다른 화면에 알림)
+        if (r && r.mode === 'dog' && r.state === 'play' && c.alive) r.players.forEach(q => { if (q !== c) send(q, { t: 'jlock', id: c.id, target: m.target }); });
+        break;
       case 'jflare': // 플레어: 나를 쫓는 미사일을 속임 (다른 화면에 전달)
         if (r && r.mode === 'dog' && r.state === 'play' && c.alive) r.players.forEach(q => { if (q !== c) send(q, { t: 'jflare', id: c.id }); });
         break;
