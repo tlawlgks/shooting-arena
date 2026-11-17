@@ -1508,7 +1508,7 @@ function doJump(x,z){
 function fallUpdate(dt,fx,fz){ // 자유낙하 → 낙하산
   let g=groundH(P.x,P.z);const feet=P.y-1.7;for(const b of nearBoxes(P.x,P.z,0.8))if(b.maxy<=feet+0.5&&b.maxy>g&&P.x>b.minx-0.3&&P.x<b.maxx+0.3&&P.z>b.minz-0.3&&P.z<b.maxz+0.3)g=b.maxy;
   if(!P.chute&&feet-g<130){P.chute=true;beep(200,0.2,'triangle',0.05)}
-  const vy=P.chute?-6:-45,hs=P.chute?9:28,s=Math.sin(P.yaw),c=Math.cos(P.yaw);
+  const vy=P.chute?-6:-45,hs=P.chute?45:140,/* 수평 이동 속도 (5배) */s=Math.sin(P.yaw),c=Math.cos(P.yaw);
   P.x=Math.max(-ARENA+2,Math.min(ARENA-2,P.x+(fx*c+fz*s)*hs*dt));P.z=Math.max(-ARENA+2,Math.min(ARENA-2,P.z+(-fx*s+fz*c)*hs*dt));
   let nf=feet+vy*dt;if(nf<=g){nf=g;P.fall=false;P.chute=false;P.vy=0;P.onGround=true;beep(90,0.15,'sawtooth',0.06)}
   P.y=nf+1.7;P.mv=0;
