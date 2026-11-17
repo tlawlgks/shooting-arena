@@ -250,6 +250,7 @@ function endGame(r, reason) {
 // 피해 적용: 체력 감소 → (사망 시) 킬 처리, 전적, 종료 판정, 부활 예약
 function damage(r, c, v, dmg, hs, src) {
   const self = c === v; // 자기 수류탄에 맞은 경우
+  if (r.mode === 'br' && v.inv && v.inv.helmet && src !== 'zone') dmg = Math.max(1, Math.round(dmg * HELMET_CUT[v.inv.helmet])); // 헬멧
   v.hp -= dmg; v.lastHurt = Date.now();
   if (!self) send(c, { t: 'hitconfirm', hs: !!hs, dmg });
   if (v.hp > 0) { const hm = { t: 'hp', id: v.id, hp: v.hp, by: c.id }; return r.mode === 'br' ? send(v, hm) : inRoom(r, hm); } // 배틀로얄은 맞은 사람에게만 (인원이 많아서)
@@ -281,6 +282,18 @@ function damage(r, c, v, dmg, hs, src) {
 // 배틀로얄: 섬 · 봇(서버가 조종) · 아이템/탄약 · 인벤토리 · 자기장 · 순위
 // =====================================================================
 const AMMO = WEAPONS.AMMO;
+const VEH = BRMAP.VEH;
+const vehPub = v => ({ id: v.id, type: v.type, x: v.x, y: v.y, z: v.z, yaw: v.yaw, pitch: v.pitch, roll: v.roll, hp: Math.round(v.hp), seats: v.seats, dead: v.dead });
+function vseat(r, v) { inRoom(r, { t: 'vseat', id: v.id, seats: v.seats, x: v.x, y: v.y, z: v.z, yaw: v.yaw, pitch: v.pitch, roll: v.roll }); }
+function freeSeat(r, p) { // 차에서 내림 (죽거나 나가도)
+  if (p.veh == null || !r.vehs) return; const v = r.vehs[p.veh]; p.veh = null; if (!v) return;
+  const s = v.seats.indexOf(p.id); if (s >= 0) v.seats[s] = 0; if (s === 0) v.spd = 0; vseat(r, v);
+}
+function vehBoom(r, v, by) { // 차량 폭발: 탄 사람 모두 큰 피해
+  if (v.dead) return; v.dead = true; v.hp = 0; v.spd = 0; inRoom(r, { t: 'vboom', id: v.id });
+  const occ = v.seats.filter(Boolean); v.seats = v.seats.map(() => 0); vseat(r, v);
+  for (const pid of occ) { const p = r.players.get(pid); if (!p) continue; p.veh = null; if (p.alive && r.state === 'play') damage(r, by, p, 150, false); }
+}
 const BR_ZONE = { R0: 2850, PH: [[90, 150, 1400, 1], [70, 110, 750, 2], [60, 80, 400, 4], [50, 60, 200, 7], [40, 45, 100, 12], [35, 35, 45, 20], [30, 25, 15, 30], [20, 20, 0, 45]] }; // [대기 초, 축소 초, 다음 반지름, 밖에 있을 때 초당 피해]
 const wWeight = w => /대물/.test(w.type) ? 0.12 : /석궁|레버/.test(w.type) ? 0.2 : /볼트/.test(w.type) ? 0.35 : /기관총/.test(w.type) ? 0.4 : /지정사수|반자동/.test(w.type) ? 0.6 : /샷건/.test(w.type) ? 0.8 : 1;
 const W_POOL = []; { let acc = 0; WEAPONS.forEach(w => { acc += wWeight(w); W_POOL.push([acc, w]); }); }
@@ -290,7 +303,7 @@ const pickAmmo = () => { let x = Math.random() * AMMO_W.reduce((a, b) => a + b[1
 const BOT_POOL = WEAPONS.filter(w => !/대물|석궁|레버|기관권총/.test(w.type)).map(w => w.id);
 const rndf = (a, b) => a + Math.random() * (b - a), r2 = v => Math.round(v * 100) / 100;
 const brAlive = r => { let n = 0; r.players.forEach(p => { if (p.alive) n++; }); return n; };
-const invOf = p => ({ w: p.inv.w, ammo: p.inv.ammo, meds: p.inv.meds, frag: p.nades.frag, smoke: p.nades.smoke });
+const invOf = p => ({ w: p.inv.w, ammo: p.inv.ammo, meds: p.inv.meds, helmet: p.inv.helmet || 0, frag: p.nades.frag, smoke: p.nades.smoke });
 const brHas = (p, wid) => p.inv && p.inv.w.some(x => x && x.id === wid);
 const nearHumans = (r, x, z, d, msg) => r.players.forEach(h => { if (!h.bot && (!h.alive || !h.state || (Math.abs(h.state.x - x) < d && Math.abs(h.state.z - z) < d))) send(h, msg); });
 
@@ -333,26 +346,37 @@ function brPush(r, x, z, gy) { // 봇이 벽을 통과하지 않게 밀어냄 (g
   return [Math.max(-1990, Math.min(1990, x)), Math.max(-1990, Math.min(1990, z))];
 }
 function addItem(r, it) { it.i = r.itemSeq++; it.x = r2(it.x); it.y = r2(it.y); it.z = r2(it.z); r.items.set(it.i, it); return it; }
-function genLoot(r, map) {
+const HELMET_CUT = [1, 0.9, 0.7, 0.5]; // 헬멧 레벨별 받는 피해 배율 (Lv1 -10%, Lv2 -30%, Lv3 -50%)
+function genLoot(r, map) { // 총(탄창 무한 재장전) · 헬멧 · 구급상자 · 수류탄 · 연막탄
   for (const [x, y, z] of map.loot) {
     if (Math.random() < 0.1) continue;
     const roll = Math.random();
-    if (roll < 0.34) { // 총 + 그 총의 탄약 1~2상자
-      const w = pickWeapon(); addItem(r, { k: 'w', w: w.id, n: w.mag, x, y, z });
-      for (let i = Math.random() < 0.5 ? 2 : 1; i > 0; i--) addItem(r, { k: 'a', a: w.ammo, n: AMMO[w.ammo].box, x: x + rndf(-0.8, 0.8), y, z: z + rndf(-0.8, 0.8) });
-    } else if (roll < 0.7) { const a = pickAmmo(); addItem(r, { k: 'a', a, n: AMMO[a].box, x, y, z }); }
-    else if (roll < 0.84) addItem(r, { k: 'm', n: 1, x, y, z });
-    else if (roll < 0.94) addItem(r, { k: 'f', n: 1, x, y, z });
+    if (roll < 0.42) { const w = pickWeapon(); addItem(r, { k: 'w', w: w.id, n: w.mag, x, y, z }); }
+    else if (roll < 0.62) { const q = Math.random(); addItem(r, { k: 'h', lv: q < 0.55 ? 1 : q < 0.87 ? 2 : 3, n: 1, x, y, z }); }
+    else if (roll < 0.8) addItem(r, { k: 'm', n: 1, x, y, z });
+    else if (roll < 0.92) addItem(r, { k: 'f', n: 1, x, y, z });
     else addItem(r, { k: 's', n: 1, x, y, z });
   }
 }
 function nextZoneCenter(z) { const a = Math.random() * Math.PI * 2, d = Math.random() * Math.max(0, z.r - z.nr) * 0.85; z.nx = Math.max(-1700, Math.min(1700, z.cx + Math.cos(a) * d)); z.nz = Math.max(-1700, Math.min(1700, z.cz + Math.sin(a) * d)); }
 function zoneNow(z, now) { if (now <= z.shrinkAt) return { x: z.cx, z: z.cz, r: z.r }; const t = Math.min(1, (now - z.shrinkAt) / Math.max(1, z.endAt - z.shrinkAt)); return { x: z.cx + (z.nx - z.cx) * t, z: z.cz + (z.nz - z.cz) * t, r: z.r + (z.nr - z.r) * t }; }
 function sendZone(r) { const z = r.zone, now = Date.now(); inRoom(r, { t: 'zone', phase: z.phase, cx: r2(z.cx), cz: r2(z.cz), r: r2(z.r), nx: r2(z.nx), nz: r2(z.nz), nr: z.nr, wait: Math.max(0, z.shrinkAt - now), dur: z.endAt - z.shrinkAt, dps: z.dps }); }
+function botLoot(r, b, now) { // 맨손 봇: 가장 가까운 (땅바닥에 있는) 총을 찾아가서 주움
+  const ai = b.ai, st = b.state;
+  if (ai.fails >= 5 || now - ai.born > 50000 + COUNTDOWN_MS) { const w = WEAPONS[BOT_POOL[Math.floor(Math.random() * BOT_POOL.length)]]; b.bw = w; ai.mag = w.mag; return null; } // 끝내 못 찾으면 근처에서 주운 셈 침
+  let it = ai.loot != null ? r.items.get(ai.loot) : null;
+  if (!it && now > (ai.lootT || 0)) {
+    ai.lootT = now + 1000; let best = null, bd = 260;
+    for (const x of r.items.values()) { if (x.k !== 'w' || ai.bad.has(x.i)) continue; const d = Math.hypot(x.x - st.x, x.z - st.z); if (d < bd && x.y - brGround(r, x.x, x.z) < 1) { bd = d; best = x; } }
+    it = best; ai.loot = best ? best.i : null;
+  }
+  if (!it) return null;
+  if (Math.hypot(it.x - st.x, it.z - st.z) < 1.6) { r.items.delete(it.i); inRoom(r, { t: 'loot-', id: it.i }); b.bw = WEAPONS[it.w]; ai.mag = it.n || b.bw.mag; ai.loot = null; ai.target = null; return null; }
+  return it;
+}
 function makeBot(n) {
-  const w = WEAPONS[BOT_POOL[Math.floor(Math.random() * BOT_POOL.length)]];
-  return { ws: { readyState: 0 }, id: nextId++, nick: '봇 ' + n, bot: true, user: null, guest: true, bw: w,
-    ai: { wx: 0, wz: 0, wt: 0, scan: Math.random(), target: null, react: 0, cool: 0, mag: w.mag, rl: 0, stuck: 0, strafe: 1, st: 0 } };
+  return { ws: { readyState: 0 }, id: nextId++, nick: '봇 ' + n, bot: true, user: null, guest: true, bw: null, // 맨손으로 시작해서 총을 주워야 함
+    ai: { wx: 0, wz: 0, wt: 0, scan: Math.random(), target: null, react: 0, cool: 0, mag: 0, rl: 0, stuck: 0, strafe: 1, st: 0, fails: 0, born: Date.now(), bad: new Set() } };
 }
 function startBR(r) {
   const seed = (Math.random() * 2147483647) | 0, map = BRMAP.genBR(seed);
@@ -364,21 +388,22 @@ function startBR(r) {
   r.players.forEach(p => {
     const [x, z] = sp[si++ % sp.length];
     Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, sp: { x, z }, lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0,
-      streak: 0, air: 0, nades: { frag: 0, smoke: 0 }, pendingBoom: 0, inv: { w: [null, null], ammo: {}, meds: 0 }, place: 0 });
+      streak: 0, air: 0, nades: { frag: 0, smoke: 0 }, pendingBoom: 0, inv: { w: [null, null], ammo: {}, meds: 0, helmet: 0 }, place: 0, veh: null });
     p.state = { x, y: r2(brGround(r, x, z) + 1.7), z, yaw: Math.random() * 6.28, pitch: 0, pr: 0 };
   });
   r.brTotal = r.players.size;
   genLoot(r, map);
+  r.vehs = map.vehicles.map(([x, z, yaw, type], i) => ({ id: i, type, x, z, y: r2(brGround(r, x, z)), yaw, pitch: 0, roll: 0, spd: 0, hp: VEH[type].hp, seats: VEH[type].seats.map(() => 0), dead: false, mt: 0 }));
   const ph = BR_ZONE.PH[0]; r.zone = { phase: 0, cx: 0, cz: 0, r: BR_ZONE.R0, nr: ph[2], shrinkAt: r.startAt + ph[0] * 1000, endAt: r.startAt + (ph[0] + ph[1]) * 1000, dps: ph[3] }; nextZoneCenter(r.zone);
   const players = [...r.players.values()].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z, cos: cosOf(q), bot: !!q.bot })), loot = [...r.items.values()];
-  r.players.forEach(p => { if (!p.bot) send(p, { t: 'start', mode: 'br', seed, map: 5, you: p.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS, players, loot, inv: invOf(p), total: r.brTotal }); });
+  r.players.forEach(p => { if (!p.bot) send(p, { t: 'start', mode: 'br', seed, map: 5, you: p.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS, players, loot, inv: invOf(p), total: r.brTotal, vehs: r.vehs.map(vehPub) }); });
   sendZone(r);
   r.brLast = Date.now(); r.zoneDmgAt = 0; clearInterval(r.brTimer); r.brTimer = setInterval(() => brTick(r), 100);
   broadcastRooms();
 }
 function stopBR(r) { clearInterval(r.brTimer); r.brTimer = null; for (const b of r.bots || []) r.players.delete(b.id); r.bots = []; }
 function brOut(r, v, aliveN) { // 탈락: 순위 = 탈락 순간 남은 인원 + 1
-  v.place = aliveN + 1; r.brScores.push({ id: v.id, nick: v.nick, kills: v.kills, place: v.place, human: !v.bot });
+  freeSeat(r, v); v.place = aliveN + 1; r.brScores.push({ id: v.id, nick: v.nick, kills: v.kills, place: v.place, human: !v.bot });
   send(v, { t: 'brdead', place: v.place, total: r.brTotal, kills: v.kills });
   if (aliveN <= 1) endBR(r);
 }
@@ -404,13 +429,13 @@ function endBR(r, reason) {
 }
 function botFire(r, b, t) {
   const w = b.bw, st = b.state, ts = t.state, d = Math.hypot(ts.x - st.x, ts.z - st.z);
-  let p = Math.max(0.6, Math.min(0.95, 0.97 - d / 600 - (ts.pr ? 0.05 : 0))); // 실력 10배: 거의 다 맞춤
-  if (w.zoom >= 2.5) p = Math.max(0.7, 0.97 - d / 2000);
+  let p = Math.max(0.5, Math.min(0.88, 0.9 - d / 500 - (ts.pr ? 0.06 : 0))); // 실력 8배
+  if (w.zoom >= 2.5) p = Math.max(0.6, 0.9 - d / 1800);
   const hit = Math.random() < p, ty = (ts.y || 1.7) - 0.5 - (ts.pr ? 0.9 : 0);
   const to = hit ? [r2(ts.x), r2(ty), r2(ts.z)] : [r2(ts.x + rndf(-1.5, 1.5)), r2(ty + rndf(-0.6, 1)), r2(ts.z + rndf(-1.5, 1.5))];
   nearHumans(r, st.x, st.z, 200, { t: 'shot', id: b.id, from: [r2(st.x), r2(st.y - 0.25), r2(st.z)], to });
   if (!hit) return;
-  const hs = Math.random() < 0.35;
+  const hs = Math.random() < 0.28;
   let dmg = w.dmg * (hs ? 2 : 1);
   if (w.pellets > 1) dmg = w.dmg * Math.max(1, Math.round(w.pellets * Math.max(0.15, 1 - d / 25)));
   if (t.bot) dmg *= 0.35; // 봇끼리 싸울 때는 피해를 줄임 (경기가 너무 빨리 끝나지 않게)
@@ -421,20 +446,21 @@ function botsTick(r, dt, zc, now) {
   for (const b of r.bots) {
     if (r.state !== 'play') return;
     if (!b.alive) continue;
-    const ai = b.ai, st = b.state, w = b.bw, range = w.zoom >= 2.5 ? 300 : w.pellets > 1 ? 40 : 150;
+    const ai = b.ai, st = b.state, w = b.bw, range = !w ? 0 : w.zoom >= 2.5 ? 240 : w.pellets > 1 ? 34 : 120;
     ai.scan -= dt;
-    if (ai.scan <= 0) { // 0.3초마다 가까운 적 중 보이는 상대 찾기 (최대 3명 검사)
-      ai.scan = 0.1 + Math.random() * 0.06; const cand = [];
+    if (w && ai.scan <= 0) { // 총이 있을 때만 가까운 적 중 보이는 상대 찾기 (최대 3명 검사)
+      ai.scan = 0.12 + Math.random() * 0.07; const cand = [];
       for (const e of ents) { if (e === b || !e.alive) continue; const d = Math.hypot(e.state.x - st.x, e.state.z - st.z); if (d < range) cand.push([d, e]); }
       cand.sort((a, c) => a[0] - c[0]); let found = null;
       for (let i = 0; i < Math.min(3, cand.length); i++) { const e = cand[i][1]; if (brLOS(r, st.x, st.y - 0.1, st.z, e.state.x, (e.state.y || 1.7) - 0.5 - (e.state.pr ? 0.9 : 0), e.state.z)) { found = e; break; } }
-      if (found !== ai.target) { ai.target = found; ai.react = 0.09 + Math.random() * 0.08; } // 발견 후 조준까지 0.09~0.17초 (10배 빠름)
+      if (found !== ai.target) { ai.target = found; ai.react = 0.11 + Math.random() * 0.1; } // 발견 후 조준까지 0.11~0.21초 (8배 빠름)
     }
     const t = ai.target && ai.target.alive ? ai.target : null; if (!t) ai.target = null;
     // 이동 목표: 자기장 밖이면 안쪽으로, 교전 중이면 옆걸음, 아니면 다음 안전 구역 안을 돌아다님
-    let gx, gz, spd;
+    let gx, gz, spd, lg = null;
     const outNext = Math.hypot(st.x - z.nx, st.z - z.nz) > z.nr * 0.8 + 3, outNow = Math.hypot(st.x - zc.x, st.z - zc.z) > zc.r - 2;
     if (outNow) { gx = zc.x; gz = zc.z; spd = 6; }
+    else if (!w && now > (ai.avoidT || 0) && (lg = botLoot(r, b, now))) { gx = lg.x; gz = lg.z; spd = 5.5; } // 총 찾으러 감
     else if (t) {
       const dx = t.state.x - st.x, dz = t.state.z - st.z, d = Math.hypot(dx, dz) || 1; ai.st -= dt;
       if (ai.st <= 0) { ai.st = 1 + Math.random() * 2; ai.strafe = Math.random() < 0.5 ? -1 : 1; }
@@ -449,13 +475,13 @@ function botsTick(r, dt, zc, now) {
     const mx = gx - st.x, mz = gz - st.z, ml = Math.hypot(mx, mz);
     if (ml > 0.3) {
       let [nx, nz] = brPush(r, st.x + mx / ml * spd * dt, st.z + mz / ml * spd * dt, st.y - 1.7);
-      if (Math.hypot(nx - st.x, nz - st.z) < spd * dt * 0.3) { ai.stuck += dt; if (ai.stuck > 0.8) { ai.stuck = 0; ai.wt = 3; ai.wx = st.x + rndf(-15, 15); ai.wz = st.z + rndf(-15, 15); } } else ai.stuck = 0; // 막히면 다른 곳으로
+      if (Math.hypot(nx - st.x, nz - st.z) < spd * dt * 0.3) { ai.stuck += dt; if (ai.stuck > 0.8) { ai.stuck = 0; ai.wt = 3; if (!w && ai.loot != null) { ai.bad.add(ai.loot); ai.loot = null; ai.fails++; ai.avoidT = now + 2500; } ai.wx = st.x + rndf(-15, 15); ai.wz = st.z + rndf(-15, 15); } } else ai.stuck = 0; // 막히면 다른 곳으로
       st.x = r2(nx); st.z = r2(nz); st.y = r2(brGround(r, nx, nz) + 1.7); if (!t) st.yaw = r2(Math.atan2(mx, mz));
     }
     if (t) {
       st.yaw = r2(Math.atan2(t.state.x - st.x, t.state.z - st.z)); ai.react -= dt;
       if (ai.rl > 0) { ai.rl -= dt; if (ai.rl <= 0) ai.mag = w.mag; } // 재장전
-      else if (ai.react <= 0) { ai.cool -= dt; if (ai.cool <= 0) { botFire(r, b, t); ai.cool = w.cd * (1 + Math.random() * 0.15); if (--ai.mag <= 0) ai.rl = w.reload; } }
+      else if (ai.react <= 0) { ai.cool -= dt; if (ai.cool <= 0) { botFire(r, b, t); ai.cool = w.cd * (1.25 + Math.random() * 0.2); if (--ai.mag <= 0) ai.rl = w.reload; } }
     }
   }
 }
@@ -568,7 +594,7 @@ wss.on('connection', ws => {
         if (!r || !r.practice || !c.alive) break;
         const bot = r.bot, w = WEAPONS[BOT_WEAPON], now = Date.now();
         if (!bot.alive || now < r.startAt || now < (c.prot || 0)) break;
-        if (now - (bot.lastShot || 0) < w.cd * 900) break;
+        if (now - (bot.lastShot || 0) < w.cd * 1100) break;
         bot.lastShot = now; damage(r, bot, c, w.dmg, false); break;
       }
       case 'setlimit': // 방장이 대기실에서 최대 킬 수 변경
@@ -643,6 +669,42 @@ wss.on('connection', ws => {
         }
         r.players.forEach(p => { if (p !== c) send(p, { t: 'shot', id: c.id, from: m.from, to: m.to }); });
         break;
+      case 'venter': { // 차량 탑승 (가까이 있어야 함, 빈자리)
+        if (!r || r.mode !== 'br' || r.state !== 'play' || !r.vehs || !c.alive || !c.state || c.veh != null || Date.now() < r.startAt) break;
+        const v = r.vehs[m.id]; if (!v || v.dead || Math.hypot(c.state.x - v.x, c.state.z - v.z) > 5.5) break;
+        const s2 = v.seats.indexOf(0); if (s2 < 0) { send(c, { t: 'vfull' }); break; }
+        v.seats[s2] = c.id; c.veh = v.id; if (s2 === 0) { v.mt = Date.now(); v.spd = 0; } vseat(r, v); break;
+      }
+      case 'vexit': if (r && r.vehs && c.veh != null) freeSeat(r, c); break;
+      case 'vmove': { // 운전자가 보낸 차량 위치 (너무 빠르면 무시하고 서버 위치로 되돌림)
+        if (!r || !r.vehs || c.veh == null || !c.alive) break;
+        const v = r.vehs[c.veh]; if (!v || v.dead || v.seats[0] !== c.id) break;
+        const x = +m.x, y = +m.y, z = +m.z, yaw = +m.yaw; if (![x, y, z, yaw].every(Number.isFinite)) break;
+        const now = Date.now(), dt = Math.max(0.05, (now - (v.mt || now)) / 1000); v.mt = now;
+        if (Math.hypot(x - v.x, z - v.z) > VEH[v.type].max * 1.5 * dt + 4) { vseat(r, v); break; }
+        v.x = r2(Math.max(-1995, Math.min(1995, x))); v.z = r2(Math.max(-1995, Math.min(1995, z))); v.y = r2(y); v.yaw = r2(yaw);
+        v.pitch = r2(+m.pitch || 0); v.roll = r2(+m.roll || 0); v.spd = r2(Math.max(-12, Math.min(40, +m.spd || 0)));
+        const msg = { t: 'vm', id: v.id, x: v.x, y: v.y, z: v.z, yaw: v.yaw, pitch: v.pitch, roll: v.roll, spd: v.spd };
+        r.players.forEach(h => { if (h !== c && !h.bot && (!h.alive || !h.state || (Math.abs(h.state.x - v.x) < 700 && Math.abs(h.state.z - v.z) < 700))) send(h, msg); });
+        break;
+      }
+      case 'vhit': { // 차량에 총알 명중 → 내구도 감소, 0이면 폭발
+        if (!r || !r.vehs || r.state !== 'play' || !c.alive || !c.state) break;
+        const v = r.vehs[m.id], W = WEAPONS[m.w]; if (!v || v.dead || !W || !brHas(c, W.id) || c.veh === v.id) break;
+        const now = Date.now(); if (now - (c.lastVHit || 0) < W.cd * 800) break; c.lastVHit = now;
+        if (Math.hypot(c.state.x - v.x, c.state.z - v.z) > 450) break;
+        v.hp -= W.dmg * (W.pellets > 1 ? W.pellets * 0.5 : 1);
+        if (v.hp <= 0) vehBoom(r, v, c); else nearHumans(r, v.x, v.z, 500, { t: 'vhp', id: v.id, hp: Math.round(v.hp) });
+        break;
+      }
+      case 'runover': { // 차로 치기: 속도에 비례한 피해
+        if (!r || !r.vehs || r.state !== 'play' || !c.alive || c.veh == null) break;
+        const v = r.vehs[c.veh], t = r.players.get(m.target);
+        if (!v || v.dead || v.seats[0] !== c.id || !t || t === c || !t.alive || !t.state || t.veh != null) break;
+        const now = Date.now(); t.runBy = t.runBy || {}; if (now - (t.runBy[c.id] || 0) < 800) break;
+        if (Math.abs(v.spd) < 4 || Math.hypot(t.state.x - v.x, t.state.z - v.z) > 5) break;
+        t.runBy[c.id] = now; damage(r, c, t, Math.min(260, Math.round(Math.abs(v.spd) * 9)), false); break;
+      }
       case 'pick': { // 배틀로얄: 아이템 줍기 (가까이 있어야 함)
         if (!r || r.mode !== 'br' || r.state !== 'play' || !c.alive || !c.state) break;
         const it = r.items.get(m.id); if (!it) break;
@@ -652,6 +714,9 @@ wss.on('connection', ws => {
           const inv = c.inv; let sl = !inv.w[0] ? 0 : !inv.w[1] ? 1 : -1;
           if (sl < 0) { sl = m.slot === 1 ? 1 : 0; const old = inv.w[sl]; dropped = addItem(r, { k: 'w', w: old.id, n: old.mag, x: c.state.x, y: c.state.y - 1.7, z: c.state.z }); }
           inv.w[sl] = { id: it.w, mag: it.n };
+        } else if (it.k === 'h') { // 헬멧: 쓰고 있던 헬멧은 그 자리에 떨어짐
+          if (c.inv.helmet) dropped = addItem(r, { k: 'h', lv: c.inv.helmet, n: 1, x: c.state.x, y: c.state.y - 1.7, z: c.state.z });
+          c.inv.helmet = it.lv;
         } else if (it.k === 'a') c.inv.ammo[it.a] = (c.inv.ammo[it.a] || 0) + it.n;
         else if (it.k === 'm') c.inv.meds += it.n;
         else if (it.k === 'f') c.nades.frag += it.n;
@@ -660,11 +725,10 @@ wss.on('connection', ws => {
         send(c, { t: 'inv', inv: invOf(c), why: 'pick' });
         break;
       }
-      case 'reload': { // 배틀로얄: 가진 탄약만큼만 재장전
+      case 'reload': { // 배틀로얄: 탄창 무한 (탄창 크기만큼 다시 채움)
         if (!r || r.mode !== 'br' || r.state !== 'play' || !c.alive) break;
         const sl = c.inv.w[m.slot === 1 ? 1 : 0]; if (!sl) break;
-        const w = WEAPONS[sl.id], have = c.inv.ammo[w.ammo] || 0, take = Math.min(w.mag - sl.mag, have);
-        if (take > 0) { sl.mag += take; c.inv.ammo[w.ammo] = have - take; }
+        sl.mag = WEAPONS[sl.id].mag;
         send(c, { t: 'inv', inv: invOf(c), why: 'reload' });
         break;
       }

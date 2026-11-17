@@ -191,9 +191,25 @@
       trees.push([f2(x), f2(z), R() < (y > 90 ? 0.75 : 0.35) ? 0 : 1, f2(y - 0.2)]); // 높은 곳일수록 소나무
     }
     for (let i = 0; i < 60; i++) fields.push([f2(rnd(-1850, 1850)), f2(rnd(-1850, 1850)), ri(40, 110), R() < 0.6 ? 'dirt' : 'sand']);
-    return { S, N, H, boxes, loot, trees, rocks, towns, roads, fields, spawns, peaks };
+    // ---------- 8. 차량: 도로 위 (마을 근처 양 끝 + 가운데) ----------
+    const vehicles = [];
+    for (const rd of roads) {
+      const ax = rd[1] - rd[0] > rd[3] - rd[2], L = ax ? rd[1] - rd[0] : rd[3] - rd[2]; if (L < 40) continue;
+      for (const t of [0.1, 0.5, 0.9]) {
+        if (R() > (t === 0.5 ? 0.45 : 0.65)) continue;
+        const off = R() < 0.5 ? -1.8 : 1.8, x = ax ? rd[0] + L * t : (rd[0] + rd[1]) / 2 + off, z = ax ? (rd[2] + rd[3]) / 2 + off : rd[2] + L * t;
+        if (Math.abs(x) > S - 30 || Math.abs(z) > S - 30 || vehicles.some(v => Math.hypot(v[0] - x, v[1] - z) < 12)) continue;
+        vehicles.push([f2(x), f2(z), f2((ax ? Math.PI / 2 : 0) + (R() < 0.5 ? Math.PI : 0)), R() < 0.6 ? 'jeep' : 'buggy']);
+      }
+    }
+    return { S, N, H, boxes, loot, trees, rocks, towns, roads, fields, spawns, peaks, vehicles };
   }
-  const API = { genBR, heightAt };
+  // 차량 종류: 좌석(차 기준 x=왼쪽, y=엉덩이 높이, z=앞), 최고 속도(m/s), 가속, 내구도, 길이, 폭
+  const VEH = {
+    jeep: { n: '지프', seats: [[0.5, 1.5, 0.25], [-0.5, 1.5, 0.25], [0.5, 1.5, -0.95], [-0.5, 1.5, -0.95]], max: 25, acc: 8, hp: 600, len: 4.4, wid: 2.1 },
+    buggy: { n: '버기', seats: [[0.42, 1.0, -0.1], [-0.42, 1.0, -0.1]], max: 31, acc: 10, hp: 320, len: 3.6, wid: 1.8 },
+  };
+  const API = { genBR, heightAt, VEH };
   g.BRMAP = API;
   if (typeof module !== 'undefined') module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);
