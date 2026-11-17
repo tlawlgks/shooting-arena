@@ -1725,7 +1725,9 @@ function respawnLocal(x,z){
 }
 function applyStates(s){
   if(!G)return;
-  for(const id in s){const p=G.players[id];if(!p)continue;const q=s[id];p.tx=q.x;p.tz=q.z;p.ty=Math.max(0,q.y-1.7);p.tyaw=q.yaw;p.tpr=q.pr?1:0}
+  for(const id in s){const p=G.players[id];if(!p)continue;const q=s[id];
+    if(performance.now()-(p.lastSt||0)>700||Math.hypot(q.x-p.g.position.x,q.z-p.g.position.z)>30)p.g.position.set(q.x,Math.max(0,q.y-1.7),q.z); // 오랜만에 받은 위치는 미끄러지지 않게 바로 그 자리에
+    p.lastSt=performance.now();p.tx=q.x;p.tz=q.z;p.ty=Math.max(0,q.y-1.7);p.tyaw=q.yaw;p.tpr=q.pr?1:0}
 }
 function onHp(m){
   if(!G)return;
@@ -2042,7 +2044,7 @@ function loop(){
         }
         const sw=Math.sin(p.walk)*Math.min(0.7,spd*0.12);p.legL.rotation.x=sw;p.legR.rotation.x=-sw;
         if(!p.alive){p.deadT+=dt;const q=Math.min(1,p.deadT/0.42),k=q*q*(3-2*q),bounce=p.deadT>0.42&&p.deadT<0.62?Math.sin((p.deadT-0.42)/0.2*Math.PI)*0.09:0;p.pose.rotation.x=-k*Math.PI/2;p.pose.position.y=k*0.25+bounce;p.pose.position.z=0;p.legL.rotation.x=k*0.5;p.legR.rotation.x=-k*0.3;if(p.deadT>4)p.g.visible=false}
-        else p.g.visible=!p.air&&!(p.protUntil>performance.now()&&Math.floor(performance.now()/110)%2)&&(!G.br||Math.abs(p.g.position.x-camera.position.x)<180&&Math.abs(p.g.position.z-camera.position.z)<180); // 배틀로얄: 먼 사람은 그리지 않음
+        else p.g.visible=!p.air&&(!G.br||performance.now()-(p.lastSt||0)<1500||G.vseat[id])&&!(p.protUntil>performance.now()&&Math.floor(performance.now()/110)%2)&&(!G.br||Math.abs(p.g.position.x-camera.position.x)<180&&Math.abs(p.g.position.z-camera.position.z)<180); // 배틀로얄: 먼 사람은 그리지 않음
       }
       if(G.br)p.chute.visible=p.alive&&p.g.position.y-groundH(p.g.position.x,p.g.position.z)>4&&p.g.position.y<200;
       let dy=p.tyaw-p.g.rotation.y;dy=Math.atan2(Math.sin(dy),Math.cos(dy));p.g.rotation.y+=dy*Math.min(1,dt*12);

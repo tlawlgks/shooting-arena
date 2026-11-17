@@ -364,10 +364,10 @@ function zoneNow(z, now) { if (now <= z.shrinkAt) return { x: z.cx, z: z.cz, r: 
 function sendZone(r) { const z = r.zone, now = Date.now(); inRoom(r, { t: 'zone', phase: z.phase, cx: r2(z.cx), cz: r2(z.cz), r: r2(z.r), nx: r2(z.nx), nz: r2(z.nz), nr: z.nr, wait: Math.max(0, z.shrinkAt - now), dur: z.endAt - z.shrinkAt, dps: z.dps }); }
 function botLoot(r, b, now) { // 맨손 봇: 가장 가까운 (땅바닥에 있는) 총을 찾아가서 주움
   const ai = b.ai, st = b.state;
-  if (ai.fails >= 5 || now - ai.born > 50000 + COUNTDOWN_MS) { const w = WEAPONS[BOT_POOL[Math.floor(Math.random() * BOT_POOL.length)]]; b.bw = w; ai.mag = w.mag; return null; } // 끝내 못 찾으면 근처에서 주운 셈 침
+  if (ai.bad.size && now > (ai.badReset || 0)) { if (ai.badReset) ai.bad.clear(); ai.badReset = now + 20000; } // 막혔던 총도 20초마다 다시 시도
   let it = ai.loot != null ? r.items.get(ai.loot) : null;
   if (!it && now > (ai.lootT || 0)) {
-    ai.lootT = now + 1000; let best = null, bd = 260;
+    ai.lootT = now + 1000; let best = null, bd = ai.fails >= 5 ? 700 : 260; // 자주 막히면 더 멀리까지 찾음
     for (const x of r.items.values()) { if (x.k !== 'w' || ai.bad.has(x.i)) continue; const d = Math.hypot(x.x - st.x, x.z - st.z); if (d < bd && x.y - brGround(r, x.x, x.z) < 1) { bd = d; best = x; } }
     it = best; ai.loot = best ? best.i : null;
   }
