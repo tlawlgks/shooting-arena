@@ -7,7 +7,7 @@ const BRMAP = require('./brmap.js');
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 8;
-const KILL_LIMIT = { ffa: 10, team: 0, dog: 10 }; // 기본값. 개인전: 10킬 선취 / 팀전: 킬 제한 없음(3분 시간제)
+const KILL_LIMIT = { ffa: 10, team: 0 }; // 기본값. 개인전: 10킬 선취 / 팀전: 킬 제한 없음(3분 시간제)
 const LIMITS = [5, 10, 15, 20, 30, 50]; // 방에서 고를 수 있는 최대 킬 수 (팀전은 0 = 제한 없음도 가능)
 const BR_TOTALS = [10, 20, 30, 40, 50]; // 배틀로얄: 봇 포함 전체 인원
 const limitOf = (mode, v) => { v = Math.floor(+v); if (mode === 'br') return BR_TOTALS.includes(v) ? v : 30; return LIMITS.includes(v) || (mode === 'team' && v === 0) ? v : KILL_LIMIT[mode]; };
@@ -24,17 +24,15 @@ const MEDKIT_HEAL = 50;       // 구급상자 총 회복량 (개수 무제한)
 const MEDKIT_TICKS = 5;       // 5초 동안 1초마다 10씩 회복, 그동안 다른 행동 불가
 const REGEN_DELAY_MS = 10000;  // 마지막 피격 후 자동 회복 시작까지 (10초)
 const REGEN_STEP_MS = 333;     // 자동 회복 속도: 초당 3 (구급상자는 초당 10)
-const JET = { gun: 9, missile: 110, missiles: 4 }; // 도그파이트: 기총 한 발 / 미사일 피해, 목숨당 미사일 수
 const MAX_HP = 200;             // 최대 체력 (피해 100이 넘는 총도 한 방에 죽지 않게)
 const KNIFE_DMG = 100;         // 칼: 근접 한 방
 const NADES = () => ({ frag: 2, smoke: 1 }); // 목숨마다 수류탄 2, 연막탄 1
 const REWARDS = WEAPONS.REWARDS;
-const ARENA = 50;
+const ARENA = 200; // 개인전·팀전 경기장 반 크기 (400m x 400m)
 
 // 정적 파일 서버 (shooter.html)
 const STATIC = { // 요청 경로 -> [파일, Content-Type]
   '/weapons.js': ['weapons.js', 'text/javascript; charset=utf-8'],
-  '/dogfight': ['dogfight.html', 'text/html; charset=utf-8'], // 도그파이트(전투기) 화면
   '/brmap.js': ['brmap.js', 'text/javascript; charset=utf-8'],     // 배틀로얄 섬 생성기
   '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
@@ -130,11 +128,11 @@ function cleanLayout(d) {
   if (d.tbOp != null && Number.isFinite(op)) out.tbOp = clampN(op, 0.2, 1);
   return out;
 }
-const NO_COS = { color: 0, skin: 0, title: 0, jet: 0 };
+const NO_COS = { color: 0, skin: 0, title: 0 };
 const cosOf = p => (p.user && users[p.user] && users[p.user].cos) || NO_COS;
 function cleanCos(u, d) { // 레벨이 모자란 보상은 기본값으로
   const lv = levelOf(u.stats.xp), out = {};
-  for (const k of ['color', 'skin', 'title', 'jet']) { const i = Math.floor(+((d || {})[k])); const item = REWARDS[k][i]; out[k] = (item && lv >= item.lv) ? i : 0; }
+  for (const k of ['color', 'skin', 'title']) { const i = Math.floor(+((d || {})[k])); const item = REWARDS[k][i]; out[k] = (item && lv >= item.lv) ? i : 0; }
   return out;
 }
 const statOf = c => (c.user && users[c.user]) ? users[c.user].stats : null;
@@ -203,7 +201,7 @@ function startGame(r) {
   const duration = r.mode === 'team' ? TEAM_TIME_MS : 0;
   r.startAt = Date.now() + COUNTDOWN_MS;
   if (duration) r.timer = setTimeout(() => endGame(r), duration + COUNTDOWN_MS);
-  list.forEach(p => { Object.assign(p, { hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, mis: JET.missiles, pendMis: 0, nextRegen: 0 }); });
+  list.forEach(p => { Object.assign(p, { hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }); });
   r.players.forEach(p => {
     send(p, {
       t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: r.limit, duration, countdown: COUNTDOWN_MS,
@@ -274,7 +272,7 @@ function damage(r, c, v, dmg, hs, src) {
   if (limit > 0 && (r.mode === 'team' ? Math.max(...r.teamKills) >= limit : c.kills >= limit)) return endGame(r);
   setTimeout(() => {
     if (r.state !== 'play' || !r.players.has(v.id)) return;
-    v.hp = MAX_HP; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS; v.nades = NADES(); v.mis = JET.missiles;
+    v.hp = MAX_HP; v.alive = true; v.sp = spawnPoint(); v.prot = Date.now() + SPAWN_PROTECT_MS; v.nades = NADES();
     inRoom(r, { t: 'respawn', id: v.id, x: v.sp.x, z: v.sp.z, prot: SPAWN_PROTECT_MS });
   }, RESPAWN_MS);
 }
@@ -283,7 +281,7 @@ function damage(r, c, v, dmg, hs, src) {
 // 배틀로얄: 섬 · 봇(서버가 조종) · 아이템/탄약 · 인벤토리 · 자기장 · 순위
 // =====================================================================
 const AMMO = WEAPONS.AMMO;
-const BR_ZONE = { R0: 285, PH: [[60, 40, 170, 2], [45, 35, 100, 4], [40, 30, 55, 8], [30, 25, 28, 14], [25, 20, 12, 25], [20, 20, 0, 40]] }; // [대기 초, 축소 초, 다음 반지름, 밖에 있을 때 초당 피해]
+const BR_ZONE = { R0: 2850, PH: [[90, 150, 1400, 1], [70, 110, 750, 2], [60, 80, 400, 4], [50, 60, 200, 7], [40, 45, 100, 12], [35, 35, 45, 20], [30, 25, 15, 30], [20, 20, 0, 45]] }; // [대기 초, 축소 초, 다음 반지름, 밖에 있을 때 초당 피해]
 const wWeight = w => /대물/.test(w.type) ? 0.12 : /석궁|레버/.test(w.type) ? 0.2 : /볼트/.test(w.type) ? 0.35 : /기관총/.test(w.type) ? 0.4 : /지정사수|반자동/.test(w.type) ? 0.6 : /샷건/.test(w.type) ? 0.8 : 1;
 const W_POOL = []; { let acc = 0; WEAPONS.forEach(w => { acc += wWeight(w); W_POOL.push([acc, w]); }); }
 const pickWeapon = () => { const x = Math.random() * W_POOL[W_POOL.length - 1][0]; return W_POOL.find(e => e[0] >= x)[1]; };
@@ -297,9 +295,10 @@ const brHas = (p, wid) => p.inv && p.inv.w.some(x => x && x.id === wid);
 const nearHumans = (r, x, z, d, msg) => r.players.forEach(h => { if (!h.bot && (!h.alive || !h.state || (Math.abs(h.state.x - x) < d && Math.abs(h.state.z - z) < d))) send(h, msg); });
 
 function buildBRGrid(r, map) { // 충돌·시야 계산용 격자 (8m 칸)
-  const list = map.boxes.map(b => b.slice(0, 6)).filter(b => b[3] > 0.6);
-  for (const [x, z, w, d, h] of map.rocks) list.push([x - w / 2, x + w / 2, 0, h, z - d / 2, z + d / 2]);
-  for (const [x, z] of map.trees) list.push([x - 0.4, x + 0.4, 0, 5, z - 0.4, z + 0.4]);
+  const list = map.boxes.map(b => b.slice(0, 6)).filter(b => b[3] - b[2] > 0.3);
+  for (const [x, z, w, d, h, y] of map.rocks) list.push([x - w / 2, x + w / 2, y, y + h + 0.3, z - d / 2, z + d / 2]);
+  for (const [x, z, , y] of map.trees) list.push([x - 0.4, x + 0.4, y, y + 5, z - 0.4, z + 0.4]);
+  r.brMap = map;
   const G = new Map(), C = 8;
   list.forEach((b, i) => { for (let x = Math.floor(b[0] / C); x <= Math.floor(b[1] / C); x++) for (let z = Math.floor(b[4] / C); z <= Math.floor(b[5] / C); z++) { const k = x * 1000 + z; if (!G.has(k)) G.set(k, []); G.get(k).push(i); } });
   r.brBoxes = list; r.brGrid = G;
@@ -314,22 +313,24 @@ function segHits(ax, ay, az, bx, by, bz, b) { // 선분이 상자를 지나는�
   }
   return true;
 }
-function brLOS(r, ax, ay, az, bx, by, bz) { // 두 점 사이가 트였는지
+const brGround = (r, x, z) => BRMAP.heightAt(r.brMap, x, z);
+function brLOS(r, ax, ay, az, bx, by, bz) { // 두 점 사이가 트였는지 (건물·바위·나무 + 산/언덕)
   const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(L / 4)), seen = new Set();
+  for (let i = 1; i < n; i++) { const t = i / n; if (brGround(r, ax + (bx - ax) * t, az + (bz - az) * t) > ay + (by - ay) * t + 0.2) return false; }
   for (let i = 0; i <= n; i++) {
     const t = i / n;
     for (const bi of cellBoxes(r, ax + (bx - ax) * t, az + (bz - az) * t)) { if (seen.has(bi)) continue; seen.add(bi); if (segHits(ax, ay, az, bx, by, bz, r.brBoxes[bi])) return false; }
   }
   return true;
 }
-function brPush(r, x, z) { // 봇이 벽을 통과하지 않게 밀어냄
+function brPush(r, x, z, gy) { // 봇이 벽을 통과하지 않게 밀어냄 (gy = 발 높이)
   const P = 0.45;
   for (let pass = 0; pass < 2; pass++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (const bi of cellBoxes(r, x + dx * 8, z + dz * 8)) {
-    const b = r.brBoxes[bi]; if (b[3] <= 0.6 || b[2] >= 1.8) continue;
+    const b = r.brBoxes[bi]; if (b[3] <= gy + 0.6 || b[2] >= gy + 1.8) continue;
     const x0 = b[0] - P, x1 = b[1] + P, z0 = b[4] - P, z1 = b[5] + P;
     if (x > x0 && x < x1 && z > z0 && z < z1) { const m = Math.min(x - x0, x1 - x, z - z0, z1 - z); if (m === x - x0) x = x0; else if (m === x1 - x) x = x1; else if (m === z - z0) z = z0; else z = z1; }
   }
-  return [Math.max(-197, Math.min(197, x)), Math.max(-197, Math.min(197, z))];
+  return [Math.max(-1990, Math.min(1990, x)), Math.max(-1990, Math.min(1990, z))];
 }
 function addItem(r, it) { it.i = r.itemSeq++; it.x = r2(it.x); it.y = r2(it.y); it.z = r2(it.z); r.items.set(it.i, it); return it; }
 function genLoot(r, map) {
@@ -345,7 +346,7 @@ function genLoot(r, map) {
     else addItem(r, { k: 's', n: 1, x, y, z });
   }
 }
-function nextZoneCenter(z) { const a = Math.random() * Math.PI * 2, d = Math.random() * Math.max(0, z.r - z.nr) * 0.85; z.nx = Math.max(-170, Math.min(170, z.cx + Math.cos(a) * d)); z.nz = Math.max(-170, Math.min(170, z.cz + Math.sin(a) * d)); }
+function nextZoneCenter(z) { const a = Math.random() * Math.PI * 2, d = Math.random() * Math.max(0, z.r - z.nr) * 0.85; z.nx = Math.max(-1700, Math.min(1700, z.cx + Math.cos(a) * d)); z.nz = Math.max(-1700, Math.min(1700, z.cz + Math.sin(a) * d)); }
 function zoneNow(z, now) { if (now <= z.shrinkAt) return { x: z.cx, z: z.cz, r: z.r }; const t = Math.min(1, (now - z.shrinkAt) / Math.max(1, z.endAt - z.shrinkAt)); return { x: z.cx + (z.nx - z.cx) * t, z: z.cz + (z.nz - z.cz) * t, r: z.r + (z.nr - z.r) * t }; }
 function sendZone(r) { const z = r.zone, now = Date.now(); inRoom(r, { t: 'zone', phase: z.phase, cx: r2(z.cx), cz: r2(z.cz), r: r2(z.r), nx: r2(z.nx), nz: r2(z.nz), nr: z.nr, wait: Math.max(0, z.shrinkAt - now), dur: z.endAt - z.shrinkAt, dps: z.dps }); }
 function makeBot(n) {
@@ -363,8 +364,8 @@ function startBR(r) {
   r.players.forEach(p => {
     const [x, z] = sp[si++ % sp.length];
     Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, sp: { x, z }, lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0,
-      streak: 0, air: 0, nades: { frag: 0, smoke: 0 }, pendingBoom: 0, mis: 0, pendMis: 0, inv: { w: [null, null], ammo: {}, meds: 0 }, place: 0 });
-    p.state = { x, y: 1.7, z, yaw: Math.random() * 6.28, pitch: 0, pr: 0 };
+      streak: 0, air: 0, nades: { frag: 0, smoke: 0 }, pendingBoom: 0, inv: { w: [null, null], ammo: {}, meds: 0 }, place: 0 });
+    p.state = { x, y: r2(brGround(r, x, z) + 1.7), z, yaw: Math.random() * 6.28, pitch: 0, pr: 0 };
   });
   r.brTotal = r.players.size;
   genLoot(r, map);
@@ -403,13 +404,13 @@ function endBR(r, reason) {
 }
 function botFire(r, b, t) {
   const w = b.bw, st = b.state, ts = t.state, d = Math.hypot(ts.x - st.x, ts.z - st.z);
-  let p = Math.max(0.05, Math.min(0.45, 0.4 - d / 150 - (ts.pr ? 0.1 : 0)));
-  if (w.zoom >= 2.5) p = Math.max(0.08, 0.4 - d / 450);
+  let p = Math.max(0.6, Math.min(0.95, 0.97 - d / 600 - (ts.pr ? 0.05 : 0))); // 실력 10배: 거의 다 맞춤
+  if (w.zoom >= 2.5) p = Math.max(0.7, 0.97 - d / 2000);
   const hit = Math.random() < p, ty = (ts.y || 1.7) - 0.5 - (ts.pr ? 0.9 : 0);
   const to = hit ? [r2(ts.x), r2(ty), r2(ts.z)] : [r2(ts.x + rndf(-1.5, 1.5)), r2(ty + rndf(-0.6, 1)), r2(ts.z + rndf(-1.5, 1.5))];
-  nearHumans(r, st.x, st.z, 150, { t: 'shot', id: b.id, from: [r2(st.x), 1.45, r2(st.z)], to });
+  nearHumans(r, st.x, st.z, 200, { t: 'shot', id: b.id, from: [r2(st.x), r2(st.y - 0.25), r2(st.z)], to });
   if (!hit) return;
-  const hs = Math.random() < 0.08;
+  const hs = Math.random() < 0.35;
   let dmg = w.dmg * (hs ? 2 : 1);
   if (w.pellets > 1) dmg = w.dmg * Math.max(1, Math.round(w.pellets * Math.max(0.15, 1 - d / 25)));
   if (t.bot) dmg *= 0.35; // 봇끼리 싸울 때는 피해를 줄임 (경기가 너무 빨리 끝나지 않게)
@@ -420,20 +421,20 @@ function botsTick(r, dt, zc, now) {
   for (const b of r.bots) {
     if (r.state !== 'play') return;
     if (!b.alive) continue;
-    const ai = b.ai, st = b.state, w = b.bw, range = w.zoom >= 2.5 ? 120 : w.pellets > 1 ? 28 : 55;
+    const ai = b.ai, st = b.state, w = b.bw, range = w.zoom >= 2.5 ? 300 : w.pellets > 1 ? 40 : 150;
     ai.scan -= dt;
     if (ai.scan <= 0) { // 0.3초마다 가까운 적 중 보이는 상대 찾기 (최대 3명 검사)
-      ai.scan = 0.3 + Math.random() * 0.25; const cand = [];
+      ai.scan = 0.1 + Math.random() * 0.06; const cand = [];
       for (const e of ents) { if (e === b || !e.alive) continue; const d = Math.hypot(e.state.x - st.x, e.state.z - st.z); if (d < range) cand.push([d, e]); }
       cand.sort((a, c) => a[0] - c[0]); let found = null;
-      for (let i = 0; i < Math.min(3, cand.length); i++) { const e = cand[i][1]; if (brLOS(r, st.x, 1.6, st.z, e.state.x, (e.state.y || 1.7) - 0.5 - (e.state.pr ? 0.9 : 0), e.state.z)) { found = e; break; } }
-      if (found !== ai.target) { ai.target = found; ai.react = 0.9 + Math.random() * 0.8; } // 발견 후 조준까지 0.9~1.7초
+      for (let i = 0; i < Math.min(3, cand.length); i++) { const e = cand[i][1]; if (brLOS(r, st.x, st.y - 0.1, st.z, e.state.x, (e.state.y || 1.7) - 0.5 - (e.state.pr ? 0.9 : 0), e.state.z)) { found = e; break; } }
+      if (found !== ai.target) { ai.target = found; ai.react = 0.09 + Math.random() * 0.08; } // 발견 후 조준까지 0.09~0.17초 (10배 빠름)
     }
     const t = ai.target && ai.target.alive ? ai.target : null; if (!t) ai.target = null;
     // 이동 목표: 자기장 밖이면 안쪽으로, 교전 중이면 옆걸음, 아니면 다음 안전 구역 안을 돌아다님
     let gx, gz, spd;
     const outNext = Math.hypot(st.x - z.nx, st.z - z.nz) > z.nr * 0.8 + 3, outNow = Math.hypot(st.x - zc.x, st.z - zc.z) > zc.r - 2;
-    if (outNow) { gx = zc.x; gz = zc.z; spd = 5; }
+    if (outNow) { gx = zc.x; gz = zc.z; spd = 6; }
     else if (t) {
       const dx = t.state.x - st.x, dz = t.state.z - st.z, d = Math.hypot(dx, dz) || 1; ai.st -= dt;
       if (ai.st <= 0) { ai.st = 1 + Math.random() * 2; ai.strafe = Math.random() < 0.5 ? -1 : 1; }
@@ -447,14 +448,14 @@ function botsTick(r, dt, zc, now) {
     }
     const mx = gx - st.x, mz = gz - st.z, ml = Math.hypot(mx, mz);
     if (ml > 0.3) {
-      let [nx, nz] = brPush(r, st.x + mx / ml * spd * dt, st.z + mz / ml * spd * dt);
+      let [nx, nz] = brPush(r, st.x + mx / ml * spd * dt, st.z + mz / ml * spd * dt, st.y - 1.7);
       if (Math.hypot(nx - st.x, nz - st.z) < spd * dt * 0.3) { ai.stuck += dt; if (ai.stuck > 0.8) { ai.stuck = 0; ai.wt = 3; ai.wx = st.x + rndf(-15, 15); ai.wz = st.z + rndf(-15, 15); } } else ai.stuck = 0; // 막히면 다른 곳으로
-      st.x = r2(nx); st.z = r2(nz); if (!t) st.yaw = r2(Math.atan2(mx, mz));
+      st.x = r2(nx); st.z = r2(nz); st.y = r2(brGround(r, nx, nz) + 1.7); if (!t) st.yaw = r2(Math.atan2(mx, mz));
     }
     if (t) {
       st.yaw = r2(Math.atan2(t.state.x - st.x, t.state.z - st.z)); ai.react -= dt;
-      if (ai.rl > 0) { ai.rl -= dt; if (ai.rl <= 0) ai.mag = w.mag; }
-      else if (ai.react <= 0) { ai.cool -= dt; if (ai.cool <= 0) { botFire(r, b, t); ai.cool = Math.max(w.cd, 0.3) * (1.4 + Math.random()); if (--ai.mag <= 0) ai.rl = w.reload + 0.5; } }
+      if (ai.rl > 0) { ai.rl -= dt; if (ai.rl <= 0) ai.mag = w.mag; } // 재장전
+      else if (ai.react <= 0) { ai.cool -= dt; if (ai.cool <= 0) { botFire(r, b, t); ai.cool = w.cd * (1 + Math.random() * 0.15); if (--ai.mag <= 0) ai.rl = w.reload; } }
     }
   }
 }
@@ -540,7 +541,7 @@ wss.on('connection', ws => {
       case 'lobby': send(c, { t: 'rooms', rooms: listRooms() }); break;
       case 'create': {
         if (r) break;
-        const mode = ['team', 'dog', 'br'].includes(m.mode) ? m.mode : 'ffa'; // dog = 도그파이트, br = 배틀로얄 // dog = 도그파이트(전투기 개인전)
+        const mode = ['team', 'br'].includes(m.mode) ? m.mode : 'ffa'; // br = 배틀로얄
         const room = { id: nextRoomId++, name: String(m.name || '').slice(0, 20) || (c.nick + '의 방'), mode, map: mapIdx(m.map), limit: limitOf(mode, m.limit), host: c.id, state: 'wait', players: new Map(), teamKills: [0, 0] };
         rooms.set(room.id, room); room.players.set(c.id, c); c.room = room; sendRoom(room); break;
       }
@@ -556,9 +557,9 @@ wss.on('connection', ws => {
       case 'practice': { // 훈련장: 봇 1명과 끝나지 않는 연습 (전적 미반영, 방 목록에 안 나옴)
         if (r) break;
         const bot = { ws: { readyState: 0 }, id: nextId++, nick: '훈련 봇', bot: true, room: null, user: null, guest: true, loadout: [BOT_WEAPON] };
-        const room = { id: nextRoomId++, name: '훈련장', mode: m.dog ? 'dog' : 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
+        const room = { id: nextRoomId++, name: '훈련장', mode: 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
         rooms.set(room.id, room); room.players.set(c.id, c); room.players.set(bot.id, bot); c.room = room;
-        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, mis: JET.missiles, pendMis: 0, nextRegen: 0 }));
+        [c, bot].forEach(p => Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }));
         send(c, { t: 'start', mode: room.mode, practice: true, bot: bot.id, map: room.map, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
           players: [c, bot].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z, cos: cosOf(q) })) });
         break;
@@ -567,7 +568,7 @@ wss.on('connection', ws => {
         if (!r || !r.practice || !c.alive) break;
         const bot = r.bot, w = WEAPONS[BOT_WEAPON], now = Date.now();
         if (!bot.alive || now < r.startAt || now < (c.prot || 0)) break;
-        if (now - (bot.lastShot || 0) < w.cd * 600 + 250) break;
+        if (now - (bot.lastShot || 0) < w.cd * 900) break;
         bot.lastShot = now; damage(r, bot, c, w.dmg, false); break;
       }
       case 'setlimit': // 방장이 대기실에서 최대 킬 수 변경
@@ -611,7 +612,7 @@ wss.on('connection', ws => {
         if (!r || r.state !== 'play' || !c.alive || !(c.air > 0)) break;
         const x = +m.x, z = +m.z; if (!Number.isFinite(x) || !Number.isFinite(z)) break;
         c.air--; c.pendingBoom = (c.pendingBoom || 0) + 5;
-        inRoom(r, { t: 'air', id: c.id, x: clampN(x, -48, 48), z: clampN(z, -48, 48), a: Math.random() * Math.PI });
+        inRoom(r, { t: 'air', id: c.id, x: clampN(x, -1998, 1998), z: clampN(z, -1998, 1998), a: Math.random() * Math.PI });
         break;
       }
       case 'melee': { // 칼
@@ -624,36 +625,6 @@ wss.on('connection', ws => {
         if (c.state && v.state && Math.hypot(c.state.x - v.state.x, c.state.z - v.state.z) > 5) break; // 너무 멀면 무효
         damage(r, c, v, KNIFE_DMG, false); break;
       }
-      // ---------- 도그파이트 (전투기) ----------
-      case 'jhit': { // 기총 명중 (명중 판정은 쏜 사람의 브라우저가 계산)
-        if (!r || r.mode !== 'dog' || r.state !== 'play' || !c.alive) break;
-        const v = r.players.get(m.target), now = Date.now();
-        if (!v || v === c || !v.alive || now < (r.startAt || 0) || now < (v.prot || 0)) break;
-        if (now - (c.lastJet || 0) < 50) break; // 발사 속도 제한
-        c.lastJet = now; damage(r, c, v, JET.gun, false); break;
-      }
-      case 'jfire': { // 미사일 발사: 개수 확인 후 다른 사람들에게 알림 (표적에게는 경고가 뜸)
-        if (!r || r.mode !== 'dog' || r.state !== 'play' || !c.alive || !(c.mis > 0)) break;
-        c.mis--; c.pendMis = (c.pendMis || 0) + 1;
-        r.players.forEach(q => { if (q !== c) send(q, { t: 'jfire', id: c.id, target: m.target }); });
-        break;
-      }
-      case 'jmis': { // 미사일 명중: 쏜 만큼만 인정
-        if (!r || r.mode !== 'dog' || r.state !== 'play' || !(c.pendMis > 0)) break;
-        c.pendMis--;
-        const v = r.players.get(m.target);
-        if (!v || v === c || !v.alive || Date.now() < (v.prot || 0)) break;
-        damage(r, c, v, JET.missile, false); break;
-      }
-      case 'jlock': // 무유도로 쏜 미사일이 비행 중 목표를 잡음 (다른 화면에 알림)
-        if (r && r.mode === 'dog' && r.state === 'play' && c.alive) r.players.forEach(q => { if (q !== c) send(q, { t: 'jlock', id: c.id, target: m.target }); });
-        break;
-      case 'jflare': // 플레어: 나를 쫓는 미사일을 속임 (다른 화면에 전달)
-        if (r && r.mode === 'dog' && r.state === 'play' && c.alive) r.players.forEach(q => { if (q !== c) send(q, { t: 'jflare', id: c.id }); });
-        break;
-      case 'jcrash': // 추락 / 산에 충돌 / 전투 구역 이탈: 자폭 처리 (킬로 치지 않음)
-        if (r && r.mode === 'dog' && r.state === 'play' && c.alive && Date.now() >= (r.startAt || 0)) damage(r, c, c, 9999, false);
-        break;
       case 'medkit': { // 구급상자: 체력 50 회복 (일반: 쿨타임 40초·무제한 / 배틀로얄: 주운 개수만큼)
         if (!r || r.state !== 'play' || !c.alive || c.hp >= MAX_HP || c.healing) break;
         const now = Date.now(), br = r.mode === 'br';
@@ -679,7 +650,7 @@ wss.on('connection', ws => {
         r.items.delete(it.i); let dropped = null;
         if (it.k === 'w') { // 빈 칸에 넣고, 두 칸이 다 차 있으면 들고 있던 총과 바꿈 (원래 총은 그 자리에 떨어짐)
           const inv = c.inv; let sl = !inv.w[0] ? 0 : !inv.w[1] ? 1 : -1;
-          if (sl < 0) { sl = m.slot === 1 ? 1 : 0; const old = inv.w[sl]; dropped = addItem(r, { k: 'w', w: old.id, n: old.mag, x: c.state.x, y: Math.max(0, c.state.y - 1.7), z: c.state.z }); }
+          if (sl < 0) { sl = m.slot === 1 ? 1 : 0; const old = inv.w[sl]; dropped = addItem(r, { k: 'w', w: old.id, n: old.mag, x: c.state.x, y: c.state.y - 1.7, z: c.state.z }); }
           inv.w[sl] = { id: it.w, mag: it.n };
         } else if (it.k === 'a') c.inv.ammo[it.a] = (c.inv.ammo[it.a] || 0) + it.n;
         else if (it.k === 'm') c.inv.meds += it.n;
