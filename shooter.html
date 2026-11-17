@@ -1640,7 +1640,7 @@ function botAI(dt){
   if(ai.re){ai.re=false;ai.wx=b.tx;ai.wz=b.tz;ai.wt=0} // 부활 직후: 새 위치에서 다시 시작
   if(performance.now()<G.startAt)return;
   const dx=P.x-b.tx,dz=P.z-b.tz,dist=Math.hypot(dx,dz);let see=false;
-  if(P.alive&&dist<160){ // 시야 (실력 8배): 봇 머리 → 내 가슴 사이에 장애물이 없어야 함
+  if(P.alive&&dist<130){ // 시야 (실력 5배): 봇 머리 → 내 가슴 사이에 장애물이 없어야 함
     const from=new THREE.Vector3(b.tx,1.6,b.tz),dir=new THREE.Vector3(P.x,P.y-0.4-(P.prone?0.9:0),P.z).sub(from),L=dir.length();
     botRay.set(from,dir.normalize());botRay.far=L;see=botRay.intersectObjects(solids,false).length===0&&!smokeBlocks(b.tx,b.tz,P.x,P.z);
   }
@@ -1662,9 +1662,9 @@ function botAI(dt){
   b.ty=0;
   if(see){ // 조준 후 0.6초 뒤부터 사격. 멀수록, 내가 움직이거나 엎드릴수록 빗나감
     b.tyaw=Math.atan2(dx,dz);ai.see+=dt;ai.cool-=dt;
-    if(ai.see>0.075&&ai.cool<=0){ // 실력 8배: 0.075초 만에 조준, 빠른 연사, 대부분 맞춤
-      ai.cool=0.125+Math.random()*0.06;
-      const hit=Math.random()<clampV(0.9-dist/450-(P.mv||0)*0.04-(P.prone?0.04:0),0.6,0.9);
+    if(ai.see>0.12&&ai.cool<=0){ // 실력 5배: 0.12초 만에 조준
+      ai.cool=0.18+Math.random()*0.1;
+      const hit=Math.random()<clampV(0.82-dist/350-(P.mv||0)*0.06-(P.prone?0.05:0),0.45,0.82);
       const from=new THREE.Vector3(b.g.position.x,1.4,b.g.position.z),to=new THREE.Vector3(P.x+(hit?0:rnd(-1.2,1.2)),P.y-0.5+(hit?0:rnd(-0.6,0.9)),P.z+(hit?0:rnd(-1.2,1.2)));
       addTracer(from,to);gunSound(130,Math.max(0.1,1-dist/80)*0.7);b.firedAt=performance.now();
       if(hit)send({t:'bothit'});

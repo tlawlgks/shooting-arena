@@ -458,13 +458,13 @@ function endBR(r, reason) {
 }
 function botFire(r, b, t) {
   const w = b.bw, st = b.state, ts = t.state, d = Math.hypot(ts.x - st.x, ts.z - st.z);
-  let p = Math.max(0.5, Math.min(0.88, 0.9 - d / 500 - (ts.pr ? 0.06 : 0))); // 실력 8배
-  if (w.zoom >= 2.5) p = Math.max(0.6, 0.9 - d / 1800);
+  let p = Math.max(0.35, Math.min(0.78, 0.8 - d / 300 - (ts.pr ? 0.08 : 0))); // 실력 5배
+  if (w.zoom >= 2.5) p = Math.max(0.45, 0.8 - d / 1200);
   const hit = Math.random() < p, ty = (ts.y || 1.7) - 0.5 - (ts.pr ? 0.9 : 0);
   const to = hit ? [r2(ts.x), r2(ty), r2(ts.z)] : [r2(ts.x + rndf(-1.5, 1.5)), r2(ty + rndf(-0.6, 1)), r2(ts.z + rndf(-1.5, 1.5))];
   nearHumans(r, st.x, st.z, 200, { t: 'shot', id: b.id, from: [r2(st.x), r2(st.y - 0.25), r2(st.z)], to });
   if (!hit) return;
-  const hs = Math.random() < 0.28;
+  const hs = Math.random() < 0.2;
   let dmg = w.dmg * (hs ? 2 : 1);
   if (w.pellets > 1) dmg = w.dmg * Math.max(1, Math.round(w.pellets * Math.max(0.15, 1 - d / 25)));
   if (t.bot) dmg *= 0.35; // 봇끼리 싸울 때는 피해를 줄임 (경기가 너무 빨리 끝나지 않게)
@@ -479,14 +479,14 @@ function botsTick(r, dt, zc, now) {
       const f = b.fall, t = Math.min(1, (now - f.t0) / (f.t1 - f.t0)), x = f.x0 + (f.x1 - f.x0) * t, z2 = f.z0 + (f.z1 - f.z0) * t, gy = brGround(r, x, z2) + 1.7;
       b.state.x = r2(x); b.state.z = r2(z2); b.state.y = r2(PLANE_ALT + (gy - PLANE_ALT) * t); if (t >= 1) b.fall = null; continue;
     }
-    const ai = b.ai, st = b.state, w = b.bw, range = !w ? 0 : w.zoom >= 2.5 ? 240 : w.pellets > 1 ? 34 : 120;
+    const ai = b.ai, st = b.state, w = b.bw, range = !w ? 0 : w.zoom >= 2.5 ? 200 : w.pellets > 1 ? 32 : 100;
     ai.scan -= dt;
     if (w && ai.scan <= 0) { // 총이 있을 때만 가까운 적 중 보이는 상대 찾기 (최대 3명 검사)
-      ai.scan = 0.12 + Math.random() * 0.07; const cand = [];
+      ai.scan = 0.15 + Math.random() * 0.09; const cand = [];
       for (const e of ents) { if (e === b || !e.alive) continue; const d = Math.hypot(e.state.x - st.x, e.state.z - st.z); if (d < range) cand.push([d, e]); }
       cand.sort((a, c) => a[0] - c[0]); let found = null;
       for (let i = 0; i < Math.min(3, cand.length); i++) { const e = cand[i][1]; if (brLOS(r, st.x, st.y - 0.1, st.z, e.state.x, (e.state.y || 1.7) - 0.5 - (e.state.pr ? 0.9 : 0), e.state.z)) { found = e; break; } }
-      if (found !== ai.target) { ai.target = found; ai.react = 0.11 + Math.random() * 0.1; } // 발견 후 조준까지 0.11~0.21초 (8배 빠름)
+      if (found !== ai.target) { ai.target = found; ai.react = 0.18 + Math.random() * 0.16; } // 발견 후 조준까지 0.18~0.34초 (5배 빠름)
     }
     const t = ai.target && ai.target.alive ? ai.target : null; if (!t) ai.target = null;
     // 이동 목표: 자기장 밖이면 안쪽으로, 교전 중이면 옆걸음, 아니면 다음 안전 구역 안을 돌아다님
@@ -514,7 +514,7 @@ function botsTick(r, dt, zc, now) {
     if (t) {
       st.yaw = r2(Math.atan2(t.state.x - st.x, t.state.z - st.z)); ai.react -= dt;
       if (ai.rl > 0) { ai.rl -= dt; if (ai.rl <= 0) ai.mag = w.mag; } // 재장전
-      else if (ai.react <= 0) { ai.cool -= dt; if (ai.cool <= 0) { botFire(r, b, t); ai.cool = w.cd * (1.25 + Math.random() * 0.2); if (--ai.mag <= 0) ai.rl = w.reload; } }
+      else if (ai.react <= 0) { ai.cool -= dt; if (ai.cool <= 0) { botFire(r, b, t); ai.cool = w.cd * (1.5 + Math.random() * 0.3); if (--ai.mag <= 0) ai.rl = w.reload; } }
     }
   }
 }
@@ -629,7 +629,7 @@ wss.on('connection', ws => {
         if (!r || !r.practice || !c.alive) break;
         const bot = r.bot, w = WEAPONS[BOT_WEAPON], now = Date.now();
         if (!bot.alive || now < r.startAt || now < (c.prot || 0)) break;
-        if (now - (bot.lastShot || 0) < w.cd * 1100) break;
+        if (now - (bot.lastShot || 0) < w.cd * 1400) break;
         bot.lastShot = now; damage(r, bot, c, w.dmg, false); break;
       }
       case 'setlimit': // 방장이 대기실에서 최대 킬 수 변경
