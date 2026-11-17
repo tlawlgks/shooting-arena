@@ -250,6 +250,7 @@ function endGame(r, reason) {
 // 피해 적용: 체력 감소 → (사망 시) 킬 처리, 전적, 종료 판정, 부활 예약
 function damage(r, c, v, dmg, hs, src) {
   const self = c === v; // 자기 수류탄에 맞은 경우
+  if (v.inPlane) return; // 비행기 안에서는 피해 없음
   if (r.mode === 'br' && v.inv && v.inv.helmet && src !== 'zone') dmg = Math.max(1, Math.round(dmg * HELMET_CUT[v.inv.helmet])); // 헬멧
   v.hp -= dmg; v.lastHurt = Date.now();
   if (!self) send(c, { t: 'hitconfirm', hs: !!hs, dmg });
@@ -352,7 +353,7 @@ function genLoot(r, map) { // 총(탄창 무한 재장전) · 헬멧 · 구급�
     if (Math.random() < 0.1) continue;
     const roll = Math.random();
     if (roll < 0.42) { const w = pickWeapon(); addItem(r, { k: 'w', w: w.id, n: w.mag, x, y, z }); }
-    else if (roll < 0.62) { const q = Math.random(); addItem(r, { k: 'h', lv: q < 0.55 ? 1 : q < 0.87 ? 2 : 3, n: 1, x, y, z }); }
+    else if (roll < 0.62) { const q = Math.random(); addItem(r, { k: 'h', lv: q < 0.6 ? 1 : q < 0.9 ? 2 : 3, n: 1, x, y, z }); }
     else if (roll < 0.8) addItem(r, { k: 'm', n: 1, x, y, z });
     else if (roll < 0.92) addItem(r, { k: 'f', n: 1, x, y, z });
     else addItem(r, { k: 's', n: 1, x, y, z });
@@ -384,22 +385,50 @@ function startBR(r) {
   buildBRGrid(r, map);
   const total = Math.max(humansIn(r), r.limit); r.bots = [];
   for (let i = humansIn(r); i < total; i++) { const b = makeBot(r.bots.length + 1); r.bots.push(b); r.players.set(b.id, b); }
-  const sp = map.spawns.slice().sort(() => Math.random() - 0.5); let si = 0;
+  { const a = Math.random() * 6.283, b = a + Math.PI + rndf(-0.5, 0.5), R0 = 2050; // 비행기 경로: 섬 한쪽 끝 → 반대쪽 끝
+    const sx = Math.cos(a) * R0, sz = Math.sin(a) * R0, ex = Math.cos(b) * R0, ez = Math.sin(b) * R0;
+    r.plane = { sx: r2(sx), sz: r2(sz), ex: r2(ex), ez: r2(ez), t0: r.startAt, dur: Math.round(Math.hypot(ex - sx, ez - sz) / PLANE_SPD * 1000) }; }
+  r.nextDrop = r.startAt + 60000;
   r.players.forEach(p => {
-    const [x, z] = sp[si++ % sp.length];
+    const x = r.plane.sx, z = r.plane.sz;
     Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, sp: { x, z }, lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0,
       streak: 0, air: 0, nades: { frag: 0, smoke: 0 }, pendingBoom: 0, inv: { w: [null, null], ammo: {}, meds: 0, helmet: 0 }, place: 0, veh: null });
-    p.state = { x, y: r2(brGround(r, x, z) + 1.7), z, yaw: Math.random() * 6.28, pitch: 0, pr: 0 };
+    p.state = null; p.inPlane = true; p.fall = null; // 모두 비행기에 탄 채로 시작
+    if (p.bot) { p.jumpAt = r.startAt + r.plane.dur * (0.06 + Math.random() * 0.86); const q = Math.random(); p.inv.helmet = q < 0.35 ? 0 : q < 0.7 ? 1 : q < 0.92 ? 2 : 3; } // 봇도 헬멧
   });
   r.brTotal = r.players.size;
   genLoot(r, map);
   r.vehs = map.vehicles.map(([x, z, yaw, type], i) => ({ id: i, type, x, z, y: r2(brGround(r, x, z)), yaw, pitch: 0, roll: 0, spd: 0, hp: VEH[type].hp, seats: VEH[type].seats.map(() => 0), dead: false, mt: 0 }));
   const ph = BR_ZONE.PH[0]; r.zone = { phase: 0, cx: 0, cz: 0, r: BR_ZONE.R0, nr: ph[2], shrinkAt: r.startAt + ph[0] * 1000, endAt: r.startAt + (ph[0] + ph[1]) * 1000, dps: ph[3] }; nextZoneCenter(r.zone);
   const players = [...r.players.values()].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z, cos: cosOf(q), bot: !!q.bot })), loot = [...r.items.values()];
-  r.players.forEach(p => { if (!p.bot) send(p, { t: 'start', mode: 'br', seed, map: 5, you: p.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS, players, loot, inv: invOf(p), total: r.brTotal, vehs: r.vehs.map(vehPub) }); });
+  r.players.forEach(p => { if (!p.bot) send(p, { t: 'start', mode: 'br', seed, map: 5, you: p.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS, players, loot, inv: invOf(p), total: r.brTotal, vehs: r.vehs.map(vehPub), plane: { sx: r.plane.sx, sz: r.plane.sz, ex: r.plane.ex, ez: r.plane.ez, dur: r.plane.dur, alt: PLANE_ALT } }); });
   sendZone(r);
   r.brLast = Date.now(); r.zoneDmgAt = 0; clearInterval(r.brTimer); r.brTimer = setInterval(() => brTick(r), 100);
   broadcastRooms();
+}
+const PLANE_ALT = 600, PLANE_SPD = 90, FALL_MS = 22000; // 비행기 고도(m), 속도(m/s), 봇 낙하 시간
+const planePos = (r, now) => { const p = r.plane, t = Math.max(0, Math.min(1, (now - p.t0) / p.dur)); return { x: p.sx + (p.ex - p.sx) * t, z: p.sz + (p.ez - p.sz) * t }; };
+function jumpOut(r, p, now) { // 비행기에서 뛰어내림
+  p.inPlane = false; const q = planePos(r, now);
+  if (p.bot) { // 봇: 근처 마을(또는 그 아래)로 22초 동안 낙하
+    const t = r.brMap.towns.slice().sort((a, b) => Math.hypot(a[0] - q.x, a[1] - q.z) - Math.hypot(b[0] - q.x, b[1] - q.z))[0];
+    const near = t && Math.hypot(t[0] - q.x, t[1] - q.z) < 500;
+    const tx = near ? t[0] + rndf(-t[2], t[2]) * 0.8 : q.x + rndf(-80, 80), tz = near ? t[1] + rndf(-t[2], t[2]) * 0.8 : q.z + rndf(-80, 80);
+    const [lx, lz] = brPush(r, tx, tz, brGround(r, tx, tz)); p.fall = { x0: q.x, z0: q.z, x1: lx, z1: lz, t0: now, t1: now + FALL_MS };
+  }
+  p.state = { x: r2(q.x), y: PLANE_ALT, z: r2(q.z), yaw: 0, pitch: 0, pr: 0 };
+  inRoom(r, { t: 'jumped', id: p.id, x: r2(q.x), z: r2(q.z) });
+}
+const DROP_POOL = WEAPONS.filter(w => /볼트|대물|기관총|지정사수/.test(w.type));
+function supplyDrop(r, now) { // 자기장 안쪽 빈 땅에 보급상자 (빨간 연기)
+  const zc = zoneNow(r.zone, now);
+  for (let k = 0; k < 30; k++) {
+    const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * zc.r * 0.7, x = Math.max(-1950, Math.min(1950, zc.x + Math.cos(a) * d)), z = Math.max(-1950, Math.min(1950, zc.z + Math.sin(a) * d)), y = brGround(r, x, z);
+    if (cellBoxes(r, x, z).some(bi => { const b = r.brBoxes[bi]; return x > b[0] - 2 && x < b[1] + 2 && z > b[4] - 2 && z < b[5] + 2 && b[3] > y + 0.3; })) continue;
+    const it = addItem(r, { k: 'c', n: 1, x, y, z });
+    inRoom(r, { t: 'loot+', item: it }); inRoom(r, { t: 'drop', x: it.x, z: it.z });
+    return;
+  }
 }
 function stopBR(r) { clearInterval(r.brTimer); r.brTimer = null; for (const b of r.bots || []) r.players.delete(b.id); r.bots = []; }
 function brOut(r, v, aliveN) { // 탈락: 순위 = 탈락 순간 남은 인원 + 1
@@ -445,7 +474,11 @@ function botsTick(r, dt, zc, now) {
   const z = r.zone, ents = []; r.players.forEach(p => { if (p.alive && p.state) ents.push(p); });
   for (const b of r.bots) {
     if (r.state !== 'play') return;
-    if (!b.alive) continue;
+    if (!b.alive || b.inPlane) continue;
+    if (b.fall) { // 낙하산으로 내려오는 중
+      const f = b.fall, t = Math.min(1, (now - f.t0) / (f.t1 - f.t0)), x = f.x0 + (f.x1 - f.x0) * t, z2 = f.z0 + (f.z1 - f.z0) * t, gy = brGround(r, x, z2) + 1.7;
+      b.state.x = r2(x); b.state.z = r2(z2); b.state.y = r2(PLANE_ALT + (gy - PLANE_ALT) * t); if (t >= 1) b.fall = null; continue;
+    }
     const ai = b.ai, st = b.state, w = b.bw, range = !w ? 0 : w.zoom >= 2.5 ? 240 : w.pellets > 1 ? 34 : 120;
     ai.scan -= dt;
     if (w && ai.scan <= 0) { // 총이 있을 때만 가까운 적 중 보이는 상대 찾기 (최대 3명 검사)
@@ -489,6 +522,8 @@ function brTick(r) {
   if (r.state !== 'play') return;
   const now = Date.now(), dt = Math.min(0.25, (now - r.brLast) / 1000); r.brLast = now;
   if (now < r.startAt) return;
+  for (const p of r.players.values()) if (p.alive && p.inPlane && (p.bot ? now >= p.jumpAt : now >= r.plane.t0 + r.plane.dur)) jumpOut(r, p, now); // 경로 끝: 남은 사람 강제 낙하
+  if (now >= r.nextDrop) { r.nextDrop = now + 60000; supplyDrop(r, now); } // 1분마다 보급상자
   const z = r.zone;
   if (now >= z.endAt && z.phase < BR_ZONE.PH.length - 1) { // 다음 단계
     z.phase++; z.cx = z.nx; z.cz = z.nz; z.r = z.nr; const ph = BR_ZONE.PH[z.phase];
@@ -607,8 +642,9 @@ wss.on('connection', ws => {
         if (!r || r.host !== c.id || r.state !== 'wait') break;
         if (r.players.size < (r.mode === 'br' ? 1 : 2)) return send(c, { t: 'err', msg: '2명 이상이어야 시작할 수 있어요' }); // 배틀로얄은 혼자서도 (봇이 채움)
         startGame(r); break;
+      case 'jump': if (r && r.mode === 'br' && r.state === 'play' && c.alive && c.inPlane && Date.now() >= r.startAt) jumpOut(r, c, Date.now()); break;
       case 'state':
-        if (!r || !(r.state === 'play' ? c.alive : Date.now() < (r.outroUntil || 0))) break; // 종료 연출 중에도 위치는 계속 전달
+        if (!r || c.inPlane || !(r.state === 'play' ? c.alive : Date.now() < (r.outroUntil || 0))) break; // 종료 연출 중에도 위치는 계속 전달
         c.state = { x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, pitch: +m.pitch, pr: m.pr ? 1 : 0, roll: +m.roll || 0,
           q: (Array.isArray(m.q) && m.q.length === 4 && m.q.every(Number.isFinite)) ? m.q : null }; break; // 전투기 자세(쿼터니언)
       case 'throw': { // 수류탄·연막탄 던지기: 개수 확인 후 다른 사람들에게 궤적 전달
@@ -710,6 +746,12 @@ wss.on('connection', ws => {
         const it = r.items.get(m.id); if (!it) break;
         if (Math.hypot(c.state.x - it.x, c.state.z - it.z) > 3.2 || Math.abs((c.state.y - 1.7) - it.y) > 2.2) break;
         r.items.delete(it.i); let dropped = null;
+        if (it.k === 'c') { // 보급상자: 좋은 총 + Lv3 헬멧 + 구급상자 2 + 수류탄을 그 자리에 쏟음
+          const w = DROP_POOL[Math.floor(Math.random() * DROP_POOL.length)], out = [{ k: 'w', w: w.id, n: w.mag }, { k: 'h', lv: 3, n: 1 }, { k: 'm', n: 1 }, { k: 'm', n: 1 }, { k: 'f', n: 1 }];
+          const made = out.map((o, i) => addItem(r, Object.assign(o, { x: it.x + Math.cos(i * 1.26) * 0.9, y: it.y, z: it.z + Math.sin(i * 1.26) * 0.9 })));
+          r.players.forEach(p => { if (p.bot) return; send(p, { t: 'loot-', id: it.i }); for (const d of made) send(p, { t: 'loot+', item: d }); });
+          break;
+        }
         if (it.k === 'w') { // 빈 칸에 넣고, 두 칸이 다 차 있으면 들고 있던 총과 바꿈 (원래 총은 그 자리에 떨어짐)
           const inv = c.inv; let sl = !inv.w[0] ? 0 : !inv.w[1] ? 1 : -1;
           if (sl < 0) { sl = m.slot === 1 ? 1 : 0; const old = inv.w[sl]; dropped = addItem(r, { k: 'w', w: old.id, n: old.mag, x: c.state.x, y: c.state.y - 1.7, z: c.state.z }); }
