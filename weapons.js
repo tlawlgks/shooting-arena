@@ -138,6 +138,19 @@
     jet: JETS,   // 전투기 스킨 1000개 (도그파이트)
     title: TITLES, // 칭호 1000개: 레벨 N이면 N번 칭호까지 선택 가능 (대기실, 랭킹, 프로필에 표시)
   };
+  // 배틀로얄 탄약: 총마다 쓰는 탄 종류. c=탄약 상자 색, box=상자 하나에 든 양
+  L.AMMO = {
+    '9mm': { c: 0xe8c84a, box: 30 }, '.45 ACP': { c: 0xe8873a, box: 25 }, '5.56mm': { c: 0x4ccb5a, box: 30 }, '7.62mm': { c: 0xd94a3a, box: 30 },
+    '12게이지': { c: 0x9a2a2a, box: 10 }, '.300 매그넘': { c: 0x3a7ae8, box: 8 }, '.50 BMG': { c: 0x9a4ae8, box: 5 }, '화살': { c: 0x8a6a3a, box: 5 } };
+  const AMMO_OF = {
+    '.45 ACP': ['Colt Python', 'Desert Eagle', 'M1911', 'H&K USP45', 'S&W Model 29', 'UMP45', 'KRISS Vector', 'MAC-10', 'Thompson M1A1'],
+    '5.56mm': ['M4A1', 'M416', 'M16A4', 'Steyr AUG', 'FAMAS', 'G36C', 'SCAR-L', 'QBZ-95', 'Galil ACE', 'IWI Tavor TAR-21', 'L85A2', 'SIG SG 553', 'K2', 'AAC Honey Badger', 'AK-74', 'AKS-74U',
+      'M249', 'IWI Negev', 'H&K MG4', 'Stoner 63', 'K3', 'Ruger Mini-14', 'QBU-88'],
+    '7.62mm': ['AK-47', 'AKM', 'AK-12', 'Beryl M762', 'OTs-14 Groza', 'SCAR-H', 'FN FAL', 'H&K G3', 'M14', 'SKS', 'Mk 14 EBR', 'L1A1 SLR', 'Dragunov SVD', 'M110 SASS', 'H&K PSG1',
+      'VSS Vintorez', 'Kar98k', 'M24', 'Mosin-Nagant', 'M40A5', 'Remington M700', 'Winchester 1894', 'RPK', 'M60', 'PKM', 'MG42', 'MG3', 'M240B', 'RPD', 'DP-28', 'H&K HK21'],
+    '.300 매그넘': ['AWM', 'L96A1'], '.50 BMG': ['Barrett M82A1', 'CheyTac M200', 'Denel NTW-20', 'AS50'], '화살': ['Barnett Ghost 410'] };
+  const ammoByName = {}; for (const a in AMMO_OF) for (const n of AMMO_OF[a]) ammoByName[n] = a;
+  L.forEach(w => { w.ammo = ammoByName[w.name] || (w.type.includes('샷건') ? '12게이지' : '9mm'); });
   g.REWARDS = L.REWARDS;
   g.WEAPONS = L;
   if (typeof module !== 'undefined') module.exports = L;
