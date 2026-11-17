@@ -816,11 +816,11 @@ setInterval(() => {
       if (!br && p.alive && p.hp < MAX_HP && now - (p.lastHurt || 0) > REGEN_DELAY_MS && now >= (p.nextRegen || 0)) { p.nextRegen = now + REGEN_STEP_MS; p.hp = Math.min(MAX_HP, p.hp + 1); send(p, { t: 'hp', id: p.id, hp: p.hp }); } // 느린 자동 회복
     });
     if (!br) return inRoom(r, { t: 'states', s });
-    r.brTick = (r.brTick || 0) + 1; const all = r.brTick % 10 === 0; // 맵 전체는 0.5초마다, 주변 170m는 매번 (0.05초)
+    r.brTick = (r.brTick || 0) + 1; const all = r.brTick % 10 === 0; // 맵 전체는 0.5초마다, 주변 500m는 매번 (0.05초)
     r.players.forEach(h => { // 배틀로얄: 가까운 사람은 자주, 먼 사람은 가끔 (죽은 사람은 관전용으로 전부)
       if (h.bot) return;
       if (!h.alive || !h.state || all) return send(h, { t: 'states', s });
-      const f = {}; for (const id in s) { const q = s[id]; if (Math.abs(q.x - h.state.x) < 170 && Math.abs(q.z - h.state.z) < 170) f[id] = q; }
+      const f = {}; for (const id in s) { const q = s[id]; if ((q.x - h.state.x) ** 2 + (q.z - h.state.z) ** 2 < 500 * 500) f[id] = q; } // 주변 500m는 1초에 20번
       send(h, { t: 'states', s: f });
     });
   });
