@@ -747,11 +747,12 @@ function stairs(sx,sz,dir,steps,width,run,rise,color=0xb0b0aa,kind='concrete'){ 
     else B(sx-hw,sx+hw,0,h,sz-b,sz-a,color,kind);
   }
 }
+const ROCKG=[];let _rockN=0; // 바위 모양 8가지
 function rock(cx,cz,w,d,hh,color=0x8a8780,y0=0){ // 충돌은 상자. 고급 = 울퉁불퉁한 바위, 일반 = 상자 (y0 = 바닥 높이)
   if(TF){[cx,cz]=tp(cx,cz);if(TF.r%2)[w,d]=[d,w]}
   boxes.push({minx:cx-w/2,maxx:cx+w/2,miny:y0,maxy:y0+hh,minz:cz-d/2,maxz:cz+d/2});
   if(!HQ){boxMesh(w,hh,d,cx,y0+hh/2,cz,color,'rock',true);return}
-  const m=new THREE.Mesh(jitter(new THREE.DodecahedronGeometry(1,1),0.14),rockMat(color));
+  const m=new THREE.Mesh((ROCKG[_rockN%8]||(ROCKG[_rockN%8]=jitter(new THREE.DodecahedronGeometry(1,1),0.14))),rockMat(color));_rockN++; // 울퉁불퉁한 모양 8가지를 돌려 씀 (빠르게)
   m.scale.set(w*0.62,hh*0.62,d*0.62);m.position.set(cx,y0+hh*0.42,cz);m.rotation.y=rnd(0,6);m.castShadow=m.receiveShadow=true;mapGroup.add(m);solids.push(m);
 }
 let _treeN=0;
@@ -939,15 +940,19 @@ function mergedBoxes(list){
     const key=(HQ?b[7]:'n')+'|'+b[6]+'|'+Math.floor((b[0]+b[1])/192)+'|'+Math.floor((b[4]+b[5])/192); // 96m 구역 단위로 합침
     if(!groups.has(key))groups.set(key,[]);groups.get(key).push(b);
   }
+  // 상자 꼭짓점을 직접 만들어 합침 (THREE.BoxGeometry를 수만 개 만들지 않아 훨씬 빠름)
+  const FACES=[[[1,0,0],[0,0,-1],[0,1,0]],[[-1,0,0],[0,0,1],[0,1,0]],[[0,1,0],[1,0,0],[0,0,-1]],[[0,-1,0],[1,0,0],[0,0,1]],[[0,0,1],[1,0,0],[0,1,0]],[[0,0,-1],[-1,0,0],[0,1,0]]];
   for(const arr of groups.values()){
-    const pos=[],nor=[],uv=[];
+    const nV=arr.length*36,pos=new Float32Array(nV*3),nor=new Float32Array(nV*3),uv=new Float32Array(nV*2);let pi=0,ui=0;
     for(const b of arr){
-      const w=b[1]-b[0],hh=b[3]-b[2],d=b[5]-b[4],g=new THREE.BoxGeometry(w,hh,d);if(HQ)tileUV(g,w,hh,d,TILE[b[7]]||3);
-      g.translate((b[0]+b[1])/2,(b[2]+b[3])/2,(b[4]+b[5])/2);const ng=g.toNonIndexed();
-      for(const v of ng.attributes.position.array)pos.push(v);for(const v of ng.attributes.normal.array)nor.push(v);for(const v of ng.attributes.uv.array)uv.push(v);
-      g.dispose();ng.dispose();
+      const he=[(b[1]-b[0])/2,(b[3]-b[2])/2,(b[5]-b[4])/2],c=[(b[0]+b[1])/2,(b[2]+b[3])/2,(b[4]+b[5])/2],tile=TILE[b[7]]||3;
+      for(const [n,u,v] of FACES){
+        const ext=a=>Math.abs(a[0])*he[0]+Math.abs(a[1])*he[1]+Math.abs(a[2])*he[2],hn=ext(n),hu=ext(u),hv=ext(v),su=HQ?hu*2/tile:1,sv=HQ?hv*2/tile:1;
+        const q=[[-1,-1,0,0],[1,-1,su,0],[1,1,su,sv],[-1,1,0,sv]];
+        for(const k of [0,1,2,0,2,3]){const [a,bb,tu,tv]=q[k];for(let i=0;i<3;i++){pos[pi+i]=c[i]+n[i]*hn+u[i]*hu*a+v[i]*hv*bb;nor[pi+i]=n[i]}pi+=3;uv[ui++]=tu;uv[ui++]=tv}
+      }
     }
-    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.BufferAttribute(nor,3));geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
     geo.computeBoundingSphere();geo.computeBoundingBox();
     const m=new THREE.Mesh(geo,M(arr[0][7],arr[0][6]));m.castShadow=m.receiveShadow=true;mapGroup.add(m);solids.push(m);
   }
