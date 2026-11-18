@@ -188,6 +188,7 @@ function leaveRoom(c) {
 }
 
 function startGame(r) {
+  r.seed = (Math.random() * 2147483647) | 0; // 높은 건물 배치·높이용 (모두 같은 모양)
   if (r.mode === 'br') return startBR(r);
   r.state = 'play';
   const list = [...r.players.values()];
@@ -204,7 +205,7 @@ function startGame(r) {
   list.forEach(p => { Object.assign(p, { hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }); });
   r.players.forEach(p => {
     send(p, {
-      t: 'start', mode: r.mode, map: r.map || 0, you: p.id, limit: r.limit, duration, countdown: COUNTDOWN_MS,
+      t: 'start', mode: r.mode, map: r.map || 0, seed: r.seed, you: p.id, limit: r.limit, duration, countdown: COUNTDOWN_MS,
       players: [...r.players.values()].map(q => ({ id: q.id, nick: q.nick, team: q.team, x: q.sp.x, z: q.sp.z, cos: cosOf(q) }))
     });
   });
@@ -621,7 +622,7 @@ wss.on('connection', ws => {
         const room = { id: nextRoomId++, name: '훈련장', mode: 'ffa', practice: true, bot, map: mapIdx(m.map), host: c.id, state: 'play', players: new Map(), teamKills: [0, 0], startAt: Date.now() + COUNTDOWN_MS };
         rooms.set(room.id, room); room.players.set(c.id, c); room.players.set(bot.id, bot); c.room = room;
         [c, bot].forEach(p => Object.assign(p, { team: -1, hp: MAX_HP, kills: 0, deaths: 0, alive: true, state: null, sp: spawnPoint(), lastHurt: 0, prot: 0, lastHit: {}, lastMed: 0, healing: null, healUntil: 0, streak: 0, air: 0, nades: NADES(), pendingBoom: 0, nextRegen: 0 }));
-        send(c, { t: 'start', mode: room.mode, practice: true, bot: bot.id, map: room.map, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
+        send(c, { t: 'start', mode: room.mode, practice: true, bot: bot.id, map: room.map, seed: (Math.random() * 2147483647) | 0, you: c.id, limit: 0, duration: 0, countdown: COUNTDOWN_MS,
           players: [c, bot].map(q => ({ id: q.id, nick: q.nick, team: -1, x: q.sp.x, z: q.sp.z, cos: cosOf(q) })) });
         break;
       }

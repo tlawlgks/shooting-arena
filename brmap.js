@@ -307,12 +307,81 @@
     }
     return { S, N, H, boxes, loot, trees, rocks, towns, roads, fields, spawns, peaks, vehicles, tall, water: WATER, castles: castles.map(c => [f2(c[0]), f2(c[1])]), camps: camps.map(c => [f2(c[0]), f2(c[1])]) };
   }
+  // 개인전·팀전 지형: 강 · 좁은 협곡 · 낮은 언덕 (산은 없음). 건물 밑과 주변은 평평하게 둠
+  function genArenaTerrain(seed, S, occ) {
+    const R = rng((seed ^ 0x5bd1e995) >>> 0), rnd = (a, b) => a + R() * (b - a), N = 128, W = N + 1, seg = 2 * S / N, H = new Float32Array(W * W);
+    const dist = new Float32Array(W * W).fill(1e9); // 건물까지 거리 (칸 단위)
+    for (const q of occ) { if (q.miny > 0.5) continue; for (let iz = Math.max(0, Math.floor((q.minz + S) / seg)); iz <= Math.min(N, Math.ceil((q.maxz + S) / seg)); iz++) for (let ix = Math.max(0, Math.floor((q.minx + S) / seg)); ix <= Math.min(N, Math.ceil((q.maxx + S) / seg)); ix++) dist[iz * W + ix] = 0; }
+    for (let pass = 0; pass < 2; pass++) for (let k = 0; k < W * W; k++) { const i = pass ? W * W - 1 - k : k, ix = i % W, iz = (i / W) | 0, s = pass ? 1 : -1; let d = dist[i];
+      for (const [dx, dz, c] of [[s, 0, 1], [0, s, 1], [s, s, 1.414], [-s, s, 1.414]]) { const x = ix + dx, z = iz + dz; if (x >= 0 && x < W && z >= 0 && z < W) d = Math.min(d, dist[z * W + x] + c); } dist[i] = d; }
+    const hills = []; for (let i = 0; i < 14; i++) hills.push([rnd(-S + 20, S - 20), rnd(-S + 20, S - 20), rnd(12, 32), rnd(1.5, 4.5)]);
+    const line = (n, step, x, z, dir, wob) => { const p = []; for (let i = 0; i < n; i++) { p.push([x, z]); dir += rnd(-wob, wob); x += Math.cos(dir) * step; z += Math.sin(dir) * step; } return p; };
+    const a = rnd(0, 6.283), cuts = [
+      { pts: line(36, 14, Math.cos(a) * (S + 10), Math.sin(a) * (S + 10), a + Math.PI + rnd(-0.3, 0.3), 0.35), w: 4.5, bed: -1.8, bank: 4.5 }, // 강
+      { pts: line(11, 13, rnd(-S * 0.6, S * 0.6), rnd(-S * 0.6, S * 0.6), rnd(0, 6.283), 0.3), w: 2.6, bed: -5, bank: 1.6 },              // 좁은 협곡 (깊고 가파름)
+    ];
+    const pd = (pts, x, z) => { let best = 1e9; for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz; let t = l2 ? ((x - ax) * dx + (z - az) * dz) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; const ex = ax + dx * t - x, ez = az + dz * t - z; best = Math.min(best, ex * ex + ez * ez); } return Math.sqrt(best); };
+    for (let iz = 0; iz < W; iz++) for (let ix = 0; ix < W; ix++) {
+      const x = ix * seg - S, z = iz * seg - S; let h = 0;
+      for (const [hx, hz, hr, hh] of hills) { const d = Math.hypot(x - hx, z - hz) / hr; if (d < 2) h += hh * Math.exp(-d * d * 2); }
+      for (const c of cuts) { const d = pd(c.pts, x, z); if (d <= c.w) h = Math.min(h, c.bed); else if (d < c.w + c.bank) { const t = (d - c.w) / c.bank, s = t * t * (3 - 2 * t); h = Math.min(h, c.bed * (1 - s) + h * s); } }
+      const db = dist[iz * W + ix] * seg, sb = Math.max(0, Math.min(1, (db - 2.5) / 7)), se = Math.max(0, Math.min(1, (S - Math.max(Math.abs(x), Math.abs(z)) - 5) / 10));
+      H[iz * W + ix] = Math.round(h * sb * sb * (3 - 2 * sb) * se * 100) / 100; // 건물·벽 근처는 0으로
+    }
+    return { S, N, H, water: -0.6, roads: [], small: true };
+  }
+  // 개인전·팀전 맵: 빈 자리에 높이 10~100m 높은 건물 (서버가 준 시드로 모두 같은 모양)
+  function genTowers(seed, S, occ, count) {
+    const R = rng(seed), rnd = (a, b) => a + R() * (b - a), pick = a => a[Math.floor(R() * a.length)], T = 0.35, f2 = v => Math.round(v * 100) / 100;
+    const boxes = [], loot = [], tall = [], foot = []; let BY = 0;
+    const B = (x0, x1, y0, y1, z0, z1, c, k) => { if (x1 - x0 < 0.05 || y1 - y0 < 0.05 || z1 - z0 < 0.05) return; boxes.push([f2(x0), f2(x1), f2(y0 + BY), f2(y1 + BY), f2(z0), f2(z1), c, k]); };
+    const addLoot = (x, y, z) => loot.push([f2(x), f2(y + BY), f2(z)]);
+    function wall(alongX, fixed, a, b, base, h, opens, c, k) {
+      const seg2 = (p0, p1, y0, y1) => alongX ? B(p0, p1, base + y0, base + y1, fixed - T / 2, fixed + T / 2, c, k) : B(fixed - T / 2, fixed + T / 2, base + y0, base + y1, p0, p1, c, k);
+      opens.sort((u, v) => u[0] - v[0]); let cur = a;
+      for (const [o0, o1, y0, y1] of opens) { if (o0 > cur) seg2(cur, o0, 0, h); if (y0 > 0) seg2(o0, o1, 0, y0); if (y1 < h) seg2(o0, o1, y1, h); cur = o1; }
+      if (cur < b) seg2(cur, b, 0, h);
+    }
+    function openings(a, b, door) {
+      const L = b - a, res = []; if (L < 3) return res;
+      if (door) { const c = rnd(a + 1.4, b - 1.4); res.push([c - 0.8, c + 0.8, 0, 2.3]); }
+      const nWin = Math.floor(L / 4.5);
+      for (let i = 0; i < nWin; i++) { const c = a + (i + 0.5) * L / nWin; if (res.some(o => c + 0.7 > o[0] - 0.4 && c - 0.7 < o[1] + 0.4)) continue; res.push([c - 0.7, c + 0.7, 1.1, 2.3]); }
+      return res;
+    }
+    function spire(cx, cz) { // 높은 건물: 높이 10~100m 랜덤, 층마다 계단(지그재그)으로 옥상까지 올라감
+      const hTot = rnd(10, 100), NF = Math.max(2, Math.round(hTot / 4)), FH = hTot / NF, s = 7.2 + Math.min(4.8, hTot * 0.05), x0 = cx - s / 2, x1 = cx + s / 2, z0 = cz - s / 2, z1 = cz + s / 2, c = pick([0x9a958a, 0xa89a82, 0x8a8d90]), k = 'concrete';
+      foot.push([x0, x1, z0, z1]); tall.push([f2(cx), f2(cz), f2(s), NF, f2(FH), f2(BY)]);
+      for (let f = 0; f < NF; f++) {
+        const base = f * FH, door = i => f === 0 && i === 0;
+        wall(true, z0 + T / 2, x0, x1, base, FH, openings(x0, x1, door(0)), c, k); wall(true, z1 - T / 2, x0, x1, base, FH, openings(x0, x1, false), c, k);
+        wall(false, x0 + T / 2, z0 + T, z1 - T, base, FH, openings(z0 + T, z1 - T, false), c, k); wall(false, x1 - T / 2, z0 + T, z1 - T, base, FH, openings(z0 + T, z1 - T, false), c, k);
+        const n = 8, rise = FH / n, run = 0.68, sw = 1.3, west = f % 2 === 0;
+        const sx0 = west ? x0 + T : x1 - T - sw, sx1 = sx0 + sw, sStart = west ? z0 + T + 1.2 : z1 - T - 1.2;
+        for (let i = 0; i < n; i++) { const a = west ? sStart + i * run : sStart - (i + 1) * run; B(sx0, sx1, base, base + (i + 1) * rise, a, a + run, 0x8a8478, 'concrete'); }
+        const L = base + FH, sEnd = west ? sStart + n * run : sStart - n * run; // 위층 바닥 (올라오는 계단 자리는 비움)
+        if (west) { B(sx1, x1 - T, L - 0.25, L, z0 + T, z1 - T, 0x7a7468, 'wood'); B(sx0, sx1, L - 0.25, L, sEnd, z1 - T, 0x7a7468, 'wood'); }
+        else { B(x0 + T, sx0, L - 0.25, L, z0 + T, z1 - T, 0x7a7468, 'wood'); B(sx0, sx1, L - 0.25, L, z0 + T, sEnd, 0x7a7468, 'wood'); }
+        if (NF <= 6 || f % 3 === 0) addLoot(west ? rnd(sx1 + 0.7, x1 - T - 0.7) : rnd(x0 + T + 0.7, sx0 - 0.7), base, rnd(z0 + T + 0.8, z1 - T - 0.8)); // 높은 건물은 3층마다
+      }
+      const top = NF * FH; // 옥상 난간 (총을 쏠 수 있는 높이)
+      B(x0 - 0.2, x1 + 0.2, top, top + 1.1, z0 - 0.2, z0 + 0.2, c, k); B(x0 - 0.2, x1 + 0.2, top, top + 1.1, z1 - 0.2, z1 + 0.2, c, k);
+      B(x0 - 0.2, x0 + 0.2, top, top + 1.1, z0 + 0.2, z1 - 0.2, c, k); B(x1 - 0.2, x1 + 0.2, top, top + 1.1, z0 + 0.2, z1 - 0.2, c, k);
+      addLoot(cx - 1.2, top, cz); addLoot(cx + 1.2, top, cz - 1);
+    }
+    const free = (x0, x1, z0, z1) => !occ.some(q => q.miny < 4 && x0 < q.maxx && x1 > q.minx && z0 < q.maxz && z1 > q.minz) && !foot.some(f => x0 < f[1] + 6 && x1 > f[0] - 6 && z0 < f[3] + 6 && z1 > f[2] - 6);
+    for (let tries = 0; tall.length < count && tries < 800; tries++) {
+      const x = rnd(-S + 14, S - 14), z = rnd(-S + 14, S - 14), m = 8.5; // 건물 최대 폭 12m + 문 앞 여유
+      if (free(x - m, x + m, z - m, z + m)) spire(x, z);
+    }
+    return { boxes, tall };
+  }
   // 차량 종류: 좌석(차 기준 x=왼쪽, y=엉덩이 높이, z=앞), 최고 속도(m/s), 가속, 내구도, 길이, 폭
   const VEH = {
     jeep: { n: '지프', seats: [[0.5, 1.5, 0.25], [-0.5, 1.5, 0.25], [0.5, 1.5, -0.95], [-0.5, 1.5, -0.95]], max: 25, acc: 8, hp: 600, len: 4.4, wid: 2.1 },
     buggy: { n: '버기', seats: [[0.42, 1.0, -0.1], [-0.42, 1.0, -0.1]], max: 31, acc: 10, hp: 320, len: 3.6, wid: 1.8 },
   };
-  const API = { genBR, heightAt, VEH };
+  const API = { genBR, heightAt, VEH, genTowers, genArenaTerrain };
   g.BRMAP = API;
   if (typeof module !== 'undefined') module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

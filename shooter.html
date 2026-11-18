@@ -693,7 +693,8 @@ const _rockMats={};const rockMat=color=>_rockMats[color]||(_rockMats[color]=new 
 const leafMats=[flat(0x2f6a35),flat(0x3d7d3a),flat(0x28592f)];
 
 // ---------- 지면 높이 / 가까운 상자 찾기 (큰 맵에서도 빠르게) ----------
-const groundH=(x,z)=>curMap===5&&BR_DATA?BRMAP.heightAt(BR_DATA,x,z):0; // 배틀로얄 섬은 산·언덕이 있음
+let TERR=null; // 지금 맵의 지형(높이맵). 없으면 평지
+const groundH=(x,z)=>TERR?BRMAP.heightAt(TERR,x,z):0;
 let BGRID=new Map();const BGC=8;
 function buildBoxGrid(){BGRID=new Map();for(const b of boxes)for(let x=Math.floor(b.minx/BGC);x<=Math.floor(b.maxx/BGC);x++)for(let z=Math.floor(b.minz/BGC);z<=Math.floor(b.maxz/BGC);z++){const k=x*1000+z;let a=BGRID.get(k);if(!a)BGRID.set(k,a=[]);a.push(b)}}
 function nearBoxes(x,z,r){const out=[];for(let cx=Math.floor((x-r)/BGC);cx<=Math.floor((x+r)/BGC);cx++)for(let cz=Math.floor((z-r)/BGC);cz<=Math.floor((z+r)/BGC);cz++){const a=BGRID.get(cx*1000+cz);if(a)for(const b of a)out.push(b)}return out}
@@ -973,13 +974,13 @@ function instTrees(list){ // 나무 수백 그루를 인스턴스로 (줄기 1�
   if(!pines.length)pine.count=0;if(!leafs.length)leaf.count=0;solids.push(trunk);
 }
 function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총알 판정용 32x32 덩어리)
-  const N=D.N,S=D.S,W=N+1,seg=2*S/N,H=D.H,T=D.theme,C=new Float32Array(W*W*3),TB={blobs:T.blobs,rects:[]},cl=v=>Math.max(0,Math.min(1,v));
+  const N=D.N,S=D.S,W=N+1,seg=2*S/N,H=D.H,T=D.theme,C=new Float32Array(W*W*3),TB={blobs:T.blobs||[],rects:D.small?(T.rects||[]):[]},cl=v=>Math.max(0,Math.min(1,v));
   for(let iz=0;iz<W;iz++)for(let ix=0;ix<W;ix++){ // 꼭짓점 색: 풀밭 → 마을 터/밭 → 가파른 곳은 바위 → 높은 곳은 눈
     const x=ix*seg-S,z=iz*seg-S,hh=H[iz*W+ix],sl=Math.hypot(H[iz*W+Math.min(N,ix+1)]-H[iz*W+Math.max(0,ix-1)],H[Math.min(N,iz+1)*W+ix]-H[Math.max(0,iz-1)*W+ix])/(2*seg);
-    const wet=cl((3.5-hh)/3),n=0.82+0.36*vnoise(x*0.012+7,z*0.012+3),[kd,wt]=groundKind(TB,x,z),g=T.base,t=T.kinds[kd]||g,rk=cl((sl-0.42)*3)+cl((hh-200)/60)*0.6,sn=cl((hh-265)/25),dry=cl((hh-120)/120)*0.35;
+    const wet=D.small?cl((-0.05-hh)/0.8):cl((3.5-hh)/3),n=0.82+0.36*vnoise(x*0.012+7,z*0.012+3),[kd,wt]=groundKind(TB,x,z),g=T.base,t=T.kinds[kd]||g,rk=cl((sl-0.42)*3)+cl((hh-200)/60)*0.6,sn=cl((hh-265)/25),dry=cl((hh-120)/120)*0.35;
     for(let c=0;c<3;c++){let v=(g[c]*n)*(1-wt)+t[c]*wt;v=v*(1-dry)+[0.5,0.5,0.32][c]*dry;v=v*(1-cl(rk))+[0.47,0.46,0.44][c]*(0.85+0.3*vnoise(x*0.05,z*0.05))*cl(rk);v=v*(1-sn)+0.93*sn;C[(iz*W+ix)*3+c]=v*(1-wet)+[0.6,0.55,0.4][c]*wet} // 물가는 모래·진흙색
   }
-  const tex=(HQ?TEXS.ground:groundNoise).clone();tex.repeat.set(1,1);tex.needsUpdate=true;
+  const tex=(HQ?(T.plain?TEXS.plain:TEXS.ground):groundNoise).clone();tex.repeat.set(1,1);tex.needsUpdate=true;
   const mat=new THREE.MeshLambertMaterial({vertexColors:true,map:tex});
   const mk=(i0,j0,n,vis)=>{
     const pos=[],nor=[],uv=[],col=[],idx=[],m=n+1;
@@ -990,7 +991,7 @@ function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총
     if(vis){g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3))}
     g.setIndex(idx);g.computeBoundingSphere();g.computeBoundingBox();return g;
   };
-  for(let j=0;j<N;j+=32)for(let i=0;i<N;i+=32){const m=new THREE.Mesh(mk(i,j,32,true),mat);m.receiveShadow=true;mapGroup.add(m)}
+  const VC=D.small?16:32;for(let j=0;j<N;j+=VC)for(let i=0;i<N;i+=VC){const m=new THREE.Mesh(mk(i,j,VC,true),mat);m.receiveShadow=true;mapGroup.add(m)}
   for(let j=0;j<N;j+=8)for(let i=0;i<N;i+=8){const m=new THREE.Mesh(mk(i,j,8,false),mat);m.updateMatrixWorld();solids.push(m)} // 총알이 산에 막히게 (화면에는 안 그림)
   { // 도로: 지형을 따라가는 띠
     const rp=[],ri=[];
@@ -1000,10 +1001,16 @@ function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(rp,3));g.setIndex(ri);g.computeVertexNormals();
     const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:0x3c3c40,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));m.receiveShadow=true;mapGroup.add(m);
   }
+  if(D.small){ // 개인전·팀전: 강물은 경기장 안에만, 바깥은 원래 땅
+    const wat=new THREE.Mesh(new THREE.PlaneGeometry(2*S,2*S),new THREE.MeshPhongMaterial({color:0x3a7a9a,shininess:80,specular:0x88aabb,transparent:true,opacity:0.85}));wat.rotation.x=-Math.PI/2;wat.position.y=D.water;mapGroup.add(wat);
+    const om=T.outer==='sea'?new THREE.MeshPhongMaterial({color:rgb(T.outerColor),shininess:90,specular:0x88aabb}):new THREE.MeshLambertMaterial({color:rgb(T.outerColor)}),oy=T.outer==='sea'?-0.7:-0.02;
+    for(const [w,d,x,z] of [[1400,700-S,0,S+(700-S)/2],[1400,700-S,0,-S-(700-S)/2],[700-S,2*S,S+(700-S)/2,0],[700-S,2*S,-S-(700-S)/2,0]]){const o=new THREE.Mesh(new THREE.PlaneGeometry(w,d),om);o.rotation.x=-Math.PI/2;o.position.set(x,oy,z);mapGroup.add(o)}
+    return;
+  }
   const sea=new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),HQ?new THREE.MeshPhongMaterial({color:rgb(T.outerColor),shininess:90,specular:0x88aabb}):new THREE.MeshLambertMaterial({color:rgb(T.outerColor)}));
   sea.rotation.x=-Math.PI/2;sea.position.y=D.water||1;sea.material.transparent=true;sea.material.opacity=0.82;mapGroup.add(sea); // 바다 = 강물 높이 (강·물가가 잠김)
 }
-function buildBR(D){buildTerrain(D);mergedBoxes(D.boxes);for(const k of D.rocks)rock(k[0],k[1],k[2],k[3],k[4],0x8a8780,k[5]);instTrees(D.trees)}
+function buildBR(D){TERR=D;buildTerrain(D);mergedBoxes(D.boxes);for(const k of D.rocks)rock(k[0],k[1],k[2],k[3],k[4],0x8a8780,k[5]);instTrees(D.trees)}
 
 // ---------- 바닥 / 풍경 (테마에 따라) ----------
 function groundKind(T,x,z){
@@ -1097,14 +1104,15 @@ function buildSkyAndWalls(T){
     mapGroup.add(m);
   }
 }
+let TALL_SEED=0;
 function loadMap(i){ // 맵 교체: 이전 맵을 지우고 새로 만듦
   i=MAPS[i]?i:0;if(i===curMap)return;curMap=i;
   const tiled=!MAPS[i].hidden;ARENA=tiled?200:MAPS[i].size||50; // 일반 맵은 4x4로 이어 붙인 400m
   camera.far=ARENA>500?2700:ARENA>50?1100:700;camera.updateProjectionMatrix(); // 맵 크기에 맞춰 시야 거리
-  scene.remove(mapGroup);mapGroup.traverse(o=>{if(o.geometry)o.geometry.dispose()});
+  scene.remove(mapGroup);mapGroup.traverse(o=>{if(o.geometry)o.geometry.dispose()});TERR=null;
   mapGroup=new THREE.Group();scene.add(mapGroup);boxes.length=0;solids.length=0;_treeN=0;
   const T=tiled?tileTheme(MAPS[i].theme):MAPS[i].theme;
-  if(tiled){for(const t of TILES){TF=t;MAPS[i].build()}TF=null;mergeStatic()}else MAPS[i].build();
+  if(tiled){for(const t of TILES){TF=t;MAPS[i].build()}TF=null;mergeStatic();if(TALL_SEED){const TW=BRMAP.genTowers(TALL_SEED,ARENA,boxes,6);mergedBoxes(TW.boxes);TERR=BRMAP.genArenaTerrain(TALL_SEED,ARENA,boxes);TERR.theme=T;T.terrain=true;buildTerrain(TERR)}}else MAPS[i].build(); // 강·협곡·언덕 // 개인전·팀전: 높은 건물 (게임마다 새로)
   buildSkyAndWalls(T);buildGround(T);buildScenery(T);
   buildBoxGrid();drawMiniBase();
 }
@@ -1147,6 +1155,7 @@ const MM=150,mctx=$('mini').getContext('2d'),mbase=document.createElement('canva
 function drawMiniBase(){
   const MB=ARENA>=1000?1600:ARENA>=200?600:MM;mbase.width=mbase.height=MB;
   const c=mbase.getContext('2d'),k=MB/(ARENA*2);c.clearRect(0,0,MB,MB);c.fillStyle='rgba(20,32,22,0.8)';c.fillRect(0,0,MB,MB);
+  if(TERR&&TERR.small){const D=TERR,N=D.N,cs=MB/N;for(let iz=0;iz<N;iz++)for(let ix=0;ix<N;ix++){const hh=D.H[iz*(N+1)+ix];if(hh<-0.3){c.fillStyle='#2f6f9a';c.fillRect(ix*cs,iz*cs,cs+0.6,cs+0.6)}else if(hh>1){c.fillStyle='rgba(150,190,120,'+Math.min(0.5,hh/9)+')';c.fillRect(ix*cs,iz*cs,cs+0.6,cs+0.6)}}}
   if(curMap===5&&BR_DATA){const D=BR_DATA,N=D.N,cs=MB/N; // 높이에 따라 색칠 (산이 보이게)
     for(let iz=0;iz<N;iz++)for(let ix=0;ix<N;ix++){const hh=D.H[iz*(N+1)+ix],l=Math.min(1,hh/300);c.fillStyle=hh<1?'#2f6f9a':hh>265?'#dfe4e8':'rgb('+Math.round(48+l*110)+','+Math.round(84+l*60)+','+Math.round(44+l*80)+')';c.fillRect(ix*cs,iz*cs,cs+0.6,cs+0.6)}
     c.fillStyle='rgba(60,60,64,0.9)';for(const r of BR_DATA.roads)c.fillRect((r[0]+ARENA)*k,(r[2]+ARENA)*k,(r[1]-r[0])*k,(r[3]-r[2])*k)}
@@ -1705,7 +1714,7 @@ function botAI(dt){
   if(performance.now()<G.startAt)return;
   const dx=P.x-b.tx,dz=P.z-b.tz,dist=Math.hypot(dx,dz);let see=false;
   if(P.alive&&dist<130){ // 시야 (실력 5배): 봇 머리 → 내 가슴 사이에 장애물이 없어야 함
-    const from=new THREE.Vector3(b.tx,1.6,b.tz),dir=new THREE.Vector3(P.x,P.y-0.4-(P.prone?0.9:0),P.z).sub(from),L=dir.length();
+    const from=new THREE.Vector3(b.tx,b.ty+1.6,b.tz),dir=new THREE.Vector3(P.x,P.y-0.4-(P.prone?0.9:0),P.z).sub(from),L=dir.length();
     botRay.set(from,dir.normalize());botRay.far=L;see=botRay.intersectObjects(solids,false).length===0&&!smokeBlocks(b.tx,b.tz,P.x,P.z);
   }
   // 이동: 목표 지점으로 걷다가 도착하거나 막히면 새 목표 (안 보이면 내 쪽으로 다가옴)
@@ -1723,7 +1732,7 @@ function botAI(dt){
     if(Math.hypot(nx-ox,nz-oz)>sp*0.6)ai.wt=Math.min(ai.wt,0.3);
     b.tx=nx;b.tz=nz;
   }
-  b.ty=0;
+  b.ty=groundH(b.tx,b.tz);
   if(see){ // 조준 후 0.6초 뒤부터 사격. 멀수록, 내가 움직이거나 엎드릴수록 빗나감
     b.tyaw=Math.atan2(dx,dz);ai.see+=dt;ai.cool-=dt;
     if(ai.see>0.12&&ai.cool<=0){ // 실력 5배: 0.12초 만에 조준
@@ -1761,7 +1770,7 @@ function removePlayer(id){const p=G.players[id];if(!p)return;scene.remove(p.g);d
 function beginGame(m){
   endLocalGame();
   if(m.mode==='br'){BR_DATA=makeBRData(m.seed);curMap=-1;loadMap(5)} // 배틀로얄: 서버가 준 시드로 섬 생성
-  else loadMap(m.map||0); // 방에서 고른 맵
+  else{TALL_SEED=m.seed||0;curMap=-1;loadMap(m.map||0)} // 방에서 고른 맵 + 이번 판의 높은 건물
   G={mode:m.mode,limit:m.limit,startAt:performance.now()+(m.countdown||0),endsAt:m.duration?performance.now()+m.duration+(m.countdown||0):0,players:{},teamKills:[0,0],feed:[],streak:0};
   G.br=m.mode==='br';G.items=G.br?new Map():null;G.inv=m.inv||null;G.alive=m.total||0;G.total=m.total||0;G.spect=0;G.zone=null;G.near=null;G.spectPos=null;G.vehs=null;G.vseat={};G.nearVeh=null;G.selfM=null;MYV=null;G.plane=null;P.inPlane=false;P.fall=false;
   G.practice=!!m.practice;G.botId=m.bot||0;G.ai=null;G.air=0;G.radarUntil=0;
@@ -2192,7 +2201,7 @@ function loop(){
   if(gun.visible&&gun.children.length){const bg=scene.background,au=renderer.shadowMap.autoUpdate;scene.background=null;renderer.shadowMap.autoUpdate=false;renderer.autoClear=false;renderer.clearDepth();camera.layers.set(1);renderer.render(scene,camera);camera.layers.set(0);renderer.autoClear=true;renderer.shadowMap.autoUpdate=au;scene.background=bg}
 }
 function update(dt){
-  const sp=(P.prone?2.6:((keys.ShiftLeft||vSprint||padSprint)?9:5.5))*CW().speed*(zoomed()?0.6:1)*(curMap===5&&BR_DATA&&P.y-1.7<(BR_DATA.water||1)-0.3?0.55:1); // 물속에서는 느림
+  const sp=(P.prone?2.6:((keys.ShiftLeft||vSprint||padSprint)?9:5.5))*CW().speed*(zoomed()?0.6:1)*(TERR&&P.y-1.7<(TERR.water||0)-0.3?0.55:1); // 물속에서는 느림
   let fx=0,fz=0;if(keys.KeyW)fz-=1;if(keys.KeyS)fz+=1;if(keys.KeyA)fx-=1;if(keys.KeyD)fx+=1;
   fx+=joy.x+padJoy.x;fz+=joy.y+padJoy.y;
   const len=Math.hypot(fx,fz);if(len>1){fx/=len;fz/=len}
