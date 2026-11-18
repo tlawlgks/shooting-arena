@@ -463,6 +463,7 @@ function onMsg(m){
     case 'vhp':if(G&&G.vehs&&G.vehs.get(m.id))G.vehs.get(m.id).hp=m.hp;break;
     case 'vboom':if(G&&G.vehs&&G.vehs.get(m.id))burnVeh(G.vehs.get(m.id),true);break;
     case 'vfull':notice('빈 자리가 없어요',1200);break;
+    case 'rocket':if(G){spawnRocket(m.from,m.dir,false);if(G.players[m.id])G.players[m.id].firedAt=performance.now();const d=Math.hypot(m.from[0]-P.x,m.from[2]-P.z);boomSound(Math.max(0.05,0.35*(1-d/150)))}break;
     case 'jumped':if(G&&G.br){if(m.id===myId)doJump(m.x,m.z);else if(G.players[m.id]){const p=G.players[m.id];p.air=false;p.tx=m.x;p.tz=m.z;p.ty=598;p.g.position.set(m.x,598,m.z)}}break;
     case 'drop':if(G&&G.br){notice('📦 보급상자 투하! 빨간 연기를 찾아가세요',3000);beep(520,0.3,'sine',0.05)}break;
     case 'brdead':if(G&&G.br){$('dead').style.display='none';$('brdtxt').innerHTML='💀 탈락 · <b style="color:#ffd24a">#'+m.place+'</b> / '+m.total+'<br><small>처치 '+m.kills+' · 관전 중</small>';$('brdead').style.display='block';updatePause()}break;
@@ -970,8 +971,8 @@ function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총
   const N=D.N,S=D.S,W=N+1,seg=2*S/N,H=D.H,T=D.theme,C=new Float32Array(W*W*3),TB={blobs:T.blobs,rects:[]},cl=v=>Math.max(0,Math.min(1,v));
   for(let iz=0;iz<W;iz++)for(let ix=0;ix<W;ix++){ // 꼭짓점 색: 풀밭 → 마을 터/밭 → 가파른 곳은 바위 → 높은 곳은 눈
     const x=ix*seg-S,z=iz*seg-S,hh=H[iz*W+ix],sl=Math.hypot(H[iz*W+Math.min(N,ix+1)]-H[iz*W+Math.max(0,ix-1)],H[Math.min(N,iz+1)*W+ix]-H[Math.max(0,iz-1)*W+ix])/(2*seg);
-    const n=0.82+0.36*vnoise(x*0.012+7,z*0.012+3),[kd,wt]=groundKind(TB,x,z),g=T.base,t=T.kinds[kd]||g,rk=cl((sl-0.42)*3)+cl((hh-200)/60)*0.6,sn=cl((hh-265)/25),dry=cl((hh-120)/120)*0.35;
-    for(let c=0;c<3;c++){let v=(g[c]*n)*(1-wt)+t[c]*wt;v=v*(1-dry)+[0.5,0.5,0.32][c]*dry;v=v*(1-cl(rk))+[0.47,0.46,0.44][c]*(0.85+0.3*vnoise(x*0.05,z*0.05))*cl(rk);C[(iz*W+ix)*3+c]=v*(1-sn)+0.93*sn}
+    const wet=cl((3.5-hh)/3),n=0.82+0.36*vnoise(x*0.012+7,z*0.012+3),[kd,wt]=groundKind(TB,x,z),g=T.base,t=T.kinds[kd]||g,rk=cl((sl-0.42)*3)+cl((hh-200)/60)*0.6,sn=cl((hh-265)/25),dry=cl((hh-120)/120)*0.35;
+    for(let c=0;c<3;c++){let v=(g[c]*n)*(1-wt)+t[c]*wt;v=v*(1-dry)+[0.5,0.5,0.32][c]*dry;v=v*(1-cl(rk))+[0.47,0.46,0.44][c]*(0.85+0.3*vnoise(x*0.05,z*0.05))*cl(rk);v=v*(1-sn)+0.93*sn;C[(iz*W+ix)*3+c]=v*(1-wet)+[0.6,0.55,0.4][c]*wet} // 물가는 모래·진흙색
   }
   const tex=(HQ?TEXS.ground:groundNoise).clone();tex.repeat.set(1,1);tex.needsUpdate=true;
   const mat=new THREE.MeshLambertMaterial({vertexColors:true,map:tex});
@@ -995,7 +996,7 @@ function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총
     const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:0x3c3c40,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));m.receiveShadow=true;mapGroup.add(m);
   }
   const sea=new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),HQ?new THREE.MeshPhongMaterial({color:rgb(T.outerColor),shininess:90,specular:0x88aabb}):new THREE.MeshLambertMaterial({color:rgb(T.outerColor)}));
-  sea.rotation.x=-Math.PI/2;sea.position.y=-1.2;mapGroup.add(sea);
+  sea.rotation.x=-Math.PI/2;sea.position.y=D.water||1;sea.material.transparent=true;sea.material.opacity=0.82;mapGroup.add(sea); // 바다 = 강물 높이 (강·물가가 잠김)
 }
 function buildBR(D){buildTerrain(D);mergedBoxes(D.boxes);for(const k of D.rocks)rock(k[0],k[1],k[2],k[3],k[4],0x8a8780,k[5]);instTrees(D.trees)}
 
@@ -1104,7 +1105,7 @@ function loadMap(i){ // 맵 교체: 이전 맵을 지우고 새로 만듦
 }
 
 // ---- 플레이어 이동 / 충돌 (높이 지원) ----
-const STEP=0.6,PR=0.4,PH=1.8; // 자동으로 오를 수 있는 높이, 반지름, 키
+const STEP=0.6,PR=0.5,PH=1.8; // 자동으로 오를 수 있는 높이, 반지름, 키
 function movePlayer(nx,nz,dt){
   const feet=P.y-1.7,NB=nearBoxes(nx,nz,2.5);
   for(let pass=0;pass<3;pass++)for(const b of NB){ // 옆 충돌: 발보다 STEP 넘게 높은 물체는 벽
@@ -1114,6 +1115,11 @@ function movePlayer(nx,nz,dt){
       const dl=nx-x0,dr=x1-nx,df=nz-z0,db=z1-nz,m=Math.min(dl,dr,df,db);
       if(m===dl)nx=x0;else if(m===dr)nx=x1;else if(m===df)nz=z0;else nz=z1;
     }
+  }
+  if(P.prone||P.pl>0.3){ // 엎드리면 몸이 앞뒤로 길어짐 → 머리·다리 쪽도 벽 속으로 들어가지 않게
+    const fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw);
+    for(const k of [0.9,-0.95]){let px=nx+fx*k,pz=nz+fz*k;for(const b of NB){if(b.maxy-feet<=STEP||feet+0.8<=b.miny)continue;const r=0.35,x0=b.minx-r,x1=b.maxx+r,z0=b.minz-r,z1=b.maxz+r;
+      if(px>x0&&px<x1&&pz>z0&&pz<z1){const dl=px-x0,dr=x1-px,df=pz-z0,db=z1-pz,m=Math.min(dl,dr,df,db);let ox=0,oz=0;if(m===dl)ox=x0-px;else if(m===dr)ox=x1-px;else if(m===df)oz=z0-pz;else oz=z1-pz;nx+=ox;nz+=oz;px+=ox;pz+=oz}}}
   }
   if(G&&G.vehs)for(const v of G.vehs.values()){ // 차를 통과하지 못하게
     if(Math.abs(v.x-nx)>5||Math.abs(v.z-nz)>5||feet>v.y+1.6)continue;const T=VEH[v.type],sy=Math.sin(v.yaw),cy=Math.cos(v.yaw),rr=T.wid*0.5+PR;
@@ -1137,7 +1143,7 @@ function drawMiniBase(){
   const MB=ARENA>=1000?1600:ARENA>=200?600:MM;mbase.width=mbase.height=MB;
   const c=mbase.getContext('2d'),k=MB/(ARENA*2);c.clearRect(0,0,MB,MB);c.fillStyle='rgba(20,32,22,0.8)';c.fillRect(0,0,MB,MB);
   if(curMap===5&&BR_DATA){const D=BR_DATA,N=D.N,cs=MB/N; // 높이에 따라 색칠 (산이 보이게)
-    for(let iz=0;iz<N;iz++)for(let ix=0;ix<N;ix++){const hh=D.H[iz*(N+1)+ix],l=Math.min(1,hh/300);c.fillStyle=hh>265?'#dfe4e8':'rgb('+Math.round(48+l*110)+','+Math.round(84+l*60)+','+Math.round(44+l*80)+')';c.fillRect(ix*cs,iz*cs,cs+0.6,cs+0.6)}
+    for(let iz=0;iz<N;iz++)for(let ix=0;ix<N;ix++){const hh=D.H[iz*(N+1)+ix],l=Math.min(1,hh/300);c.fillStyle=hh<1?'#2f6f9a':hh>265?'#dfe4e8':'rgb('+Math.round(48+l*110)+','+Math.round(84+l*60)+','+Math.round(44+l*80)+')';c.fillRect(ix*cs,iz*cs,cs+0.6,cs+0.6)}
     c.fillStyle='rgba(60,60,64,0.9)';for(const r of BR_DATA.roads)c.fillRect((r[0]+ARENA)*k,(r[2]+ARENA)*k,(r[1]-r[0])*k,(r[3]-r[2])*k)}
   for(const b of boxes){if(b.maxy<0.9||b.maxx-b.minx<1)continue;c.fillStyle=b.maxy>3?'#aab0bb':'#7d848f';c.fillRect((b.minx+ARENA)*k,(b.minz+ARENA)*k,Math.max(1.5,(b.maxx-b.minx)*k),Math.max(1.5,(b.maxz-b.minz)*k))}
 }
@@ -1185,6 +1191,7 @@ function drawBig(){
   const txt=(t,px,py)=>{x.strokeText(t,px,py);x.fillText(t,px,py)};x.textAlign='center';x.lineWidth=3;x.strokeStyle='#000b';x.fillStyle='#fff';
   if(G.br&&BR_DATA){
     x.font='bold '+Math.round(S/55)+'px sans-serif';for(const t of BR_DATA.towns)txt(t[3],X(t[0]),X(t[1]));
+    x.font=Math.round(S/60)+'px sans-serif';for(const c of BR_DATA.castles||[])txt('🏰 성',X(c[0]),X(c[1]));for(const c of BR_DATA.camps||[])txt('🪖 군부대',X(c[0]),X(c[1]));
     if(G.vehs){x.fillStyle='#ffd24a';for(const v of G.vehs.values())if(!v.dead)x.fillRect(X(v.x)-2.5,X(v.z)-2.5,5,5)} // 차량 (노란 점)
     for(const [id] of drops){const it=G.items.get(id);if(it){x.fillStyle='#ff3030';x.strokeStyle='#fff';x.lineWidth=2;x.fillRect(X(it.it.x)-6,X(it.it.z)-6,12,12);x.strokeRect(X(it.it.x)-6,X(it.it.z)-6,12,12)}} // 보급상자
     if(G.plane){const q=planeNow();if(q.t<1){x.setLineDash([10,8]);x.strokeStyle='#ffffffcc';x.lineWidth=3;x.beginPath();x.moveTo(X(G.plane.sx),X(G.plane.sz));x.lineTo(X(G.plane.ex),X(G.plane.ez));x.stroke();x.setLineDash([]);x.font=Math.round(S/30)+'px sans-serif';x.fillStyle='#fff';x.strokeStyle='#000b';x.lineWidth=3;txt('✈',X(q.x),X(q.z)+S/90)}} // 비행기 경로 (끝나면 사라짐)
@@ -1215,6 +1222,7 @@ const gun=new THREE.Group();
 gun.add(new THREE.Mesh(new THREE.BoxGeometry(0.12,0.14,0.6),new THREE.MeshLambertMaterial({color:0x222})));
 gun.position.set(0.28,-0.25,-0.5);camera.add(gun);scene.add(camera);
 const flash=new THREE.PointLight(0xffcc66,0,8);flash.position.set(0.28,-0.2,-1);camera.add(flash);
+scene.traverse(o=>{if(o.isLight)o.layers.enableAll()}); // 조명은 내 총(따로 그리는 층)에도 비춤
 let flashT=0;
 
 // ================= 게임 상태 =================
@@ -1403,6 +1411,57 @@ function clearThrowables(){
   for(const n of nades)scene.remove(n.m);for(const s of smokes)scene.remove(s.g);for(const a of airs)scene.remove(a.ring);
   nades.length=smokes.length=airs.length=0;shakeT=0;
 }
+// ---- RPG 로켓: 직선 비행 (일반 탄의 절반 속도로 취급: 150m/s), 벽·땅·사람에 닿으면 폭발 ----
+const rockets=[],ROCKET_SPD=150,ROCKET_R=5.5; // 폭발 반경 5.5m
+const rocketGeo={body:new THREE.CylinderGeometry(0.11,0.11,0.8,10),head:new THREE.ConeGeometry(0.17,0.42,10),fin:new THREE.BoxGeometry(0.42,0.02,0.16),flame:new THREE.ConeGeometry(0.14,0.7,8)};
+function rocketMesh(){
+  const g=new THREE.Group(),L=c=>new THREE.MeshLambertMaterial({color:c});
+  const b=new THREE.Mesh(rocketGeo.body,L(0x4a5a3a));b.rotation.x=Math.PI/2;g.add(b);
+  const hd=new THREE.Mesh(rocketGeo.head,L(0x3a4a2a));hd.rotation.x=-Math.PI/2;hd.position.z=-0.6;g.add(hd);
+  for(const r of [0,Math.PI/2]){const f=new THREE.Mesh(rocketGeo.fin,L(0x2a2a2a));f.rotation.z=r;f.position.z=0.35;g.add(f)}
+  const fl=new THREE.Mesh(rocketGeo.flame,new THREE.MeshBasicMaterial({color:0xffa030,transparent:true,opacity:0.85}));fl.rotation.x=Math.PI/2;fl.position.z=0.78;g.add(fl);g.flame=fl;
+  scene.add(g);return g;
+}
+function spawnRocket(from,dir,mine){
+  const m=rocketMesh(),pos=new THREE.Vector3(...from),d=new THREE.Vector3(...dir).normalize();
+  m.position.copy(pos);m.lookAt(pos.clone().sub(d));rockets.push({pos,d,mine,t:6,m,smokeT:0});
+}
+function fireRocket(W){
+  const d=new THREE.Vector3();camera.getWorldDirection(d);const sp=zoomed()?W.spread*0.3:W.spread;d.x+=(Math.random()*2-1)*sp;d.y+=(Math.random()*2-1)*sp;d.normalize();
+  const from=camera.position.clone().addScaledVector(d,0.9);from.y-=0.1;
+  spawnRocket(from.toArray(),d.toArray(),true);send({t:'rocket',w:W.id,from:from.toArray(),dir:d.toArray()});
+  boomSound(0.35);shakeT=Math.max(shakeT,0.12);
+}
+const rRay=new THREE.Raycaster();
+function updateRockets(dt){
+  for(let i=rockets.length-1;i>=0;i--){
+    const r=rockets[i];r.t-=dt;const step=ROCKET_SPD*dt;
+    const tg=[];if(G)for(const id in G.players){const p=G.players[id];if(p.alive&&p.g.visible)tg.push(...p.hit)}
+    if(G&&G.vehs)for(const v of G.vehs.values())if(!v.dead&&v.g.visible&&!(MYV&&MYV.id===v.id&&r.mine))tg.push(...v.hit);
+    if(!r.mine&&G&&G.selfM&&G.selfM.g.visible)tg.push(...G.selfM.hit);
+    rRay.set(r.pos,r.d);rRay.far=step;let hit=rRay.intersectObjects(tg.concat(solids),false)[0];
+    if(!hit){const np=r.pos.clone().addScaledVector(r.d,step),gy=groundH(np.x,np.z);if(np.y<=gy+0.05){const k=r.d.y<-1e-4?Math.max(0,Math.min(1,(r.pos.y-gy)/(-r.d.y*step))):1;hit={point:r.pos.clone().addScaledVector(r.d,step*k),object:{userData:{}}}}} // 땅(바닥)에 닿음
+    if(hit||r.t<=0||Math.abs(r.pos.x)>ARENA+50||Math.abs(r.pos.z)>ARENA+50){
+      scene.remove(r.m);rockets.splice(i,1);if(!hit)continue; // 아무것도 안 맞으면 그냥 사라짐
+      const pt=hit.point.clone().addScaledVector(r.d,-0.3);explodeAt(pt,false);
+      if(r.mine&&G){
+        const o=hit.object,direct=o.userData.pid&&o.userData.pid!==myId?{id:o.userData.pid,hs:!!o.userData.head}:null,hits=[],vehs=[];
+        const src=pt.clone();src.y+=0.3;
+        const test=(id,tx,ty,tz)=>{const to=new THREE.Vector3(tx,ty,tz),d=to.distanceTo(src);if(d>ROCKET_R)return;botRay.set(src,to.clone().sub(src).normalize());botRay.far=Math.max(0.01,d-0.3);let dmg=100;if(d>0.8&&botRay.intersectObjects(solids,false).length)dmg*=0.2;hits.push({id,dmg:Math.round(dmg)})};
+        for(const id in G.players){const p=G.players[id];if(p.alive)test(+id,p.g.position.x,p.g.position.y+1.0,p.g.position.z)}
+        if(P.alive)test(myId,P.x,P.y-0.6,P.z);
+        if(G.vehs)for(const v of G.vehs.values()){if(v.dead)continue;const dd=Math.hypot(v.x-pt.x,v.z-pt.z,(v.y+1)-pt.y);if(o.userData.vid===v.id)vehs.push({id:v.id,dmg:400});else if(dd<ROCKET_R+1.5)vehs.push({id:v.id,dmg:250})}
+        if(direct&&G.players[direct.id])G.players[direct.id].flash=0.2;
+        send({t:'rhit',direct,hits,vehs});
+      }
+      continue;
+    }
+    r.pos.addScaledVector(r.d,step);r.m.position.copy(r.pos);r.m.flame.scale.setScalar(0.8+Math.random()*0.5);
+    r.smokeT-=dt;if(r.smokeT<=0){r.smokeT=0.03;burst(r.pos.clone().addScaledVector(r.d,0.8),0xbbbbbb,1,0.6,0.9)} // 연기 꼬리
+  }
+}
+function clearRockets(){for(const r of rockets)scene.remove(r.m);rockets.length=0}
+
 // ---- 칼: 바로 앞(2.4m)의 적을 한 방에 ----
 function melee(){
   if(MYV||P.inPlane||P.fall)return;if(!G||!P.alive||G.over||medBusy()||performance.now()<G.startAt||performance.now()<meleeCool)return;
@@ -1590,7 +1649,7 @@ function vehUpdate(dt,fx,fz){
     if(thr>0.1)v.spd+=(v.spd<-0.5?22:T.acc)*thr*dt;else if(thr<-0.1)v.spd-=(v.spd>0.5?22:7)*(-thr)*dt;else v.spd-=Math.sign(v.spd)*Math.min(Math.abs(v.spd),2.5*dt);
     if(brake)v.spd-=Math.sign(v.spd)*Math.min(Math.abs(v.spd),30*dt);
     const sy=Math.sin(v.yaw),cy=Math.cos(v.yaw);v.spd-=9.8*((groundH(v.x+sy*1.6,v.z+cy*1.6)-groundH(v.x-sy*1.6,v.z-cy*1.6))/3.2)*0.85*dt;
-    const max=T.max*(onRoadAt(v.x,v.z)?1:0.75);if(v.spd>max)v.spd=Math.max(max,v.spd-12*dt);v.spd=Math.max(-9,v.spd);
+    const max=T.max*(onRoadAt(v.x,v.z)?1:0.75)*(v.y<(BR_DATA.water||1)-0.3?0.45:1); // 물속은 느림if(v.spd>max)v.spd=Math.max(max,v.spd-12*dt);v.spd=Math.max(-9,v.spd);
     const turn=st*1.6*Math.min(1,Math.abs(v.spd)/5)*Math.sign(v.spd)*(Math.abs(v.spd)>18?0.7:1);v.yaw+=turn*dt;P.yaw+=turn*dt; // 카메라도 같이 돎
     const nx=v.x+Math.sin(v.yaw)*v.spd*dt,nz=v.z+Math.cos(v.yaw)*v.spd*dt;
     if(vehBlocked(v,nx,nz)){if(Math.abs(v.spd)>12){shakeT=Math.max(shakeT,0.3);beep(70,0.2,'sawtooth',0.08)}v.spd*=-0.25}
@@ -1690,7 +1749,7 @@ function makePlayer(p){
   const hit=[body,head,helmet,legL.mesh,legR.mesh]; // 총알 판정 부위
   hit.forEach(m=>m.userData.pid=p.id);head.userData.head=helmet.userData.head=true;
   g.position.set(p.x||0,0,p.z||0);scene.add(g);
-  return{...p,g,pose,chute,pr:0,tpr:0,body,head,helmet,legL,legR,hit,walk:0,deadT:0,hp:MAX_HP,alive:true,kills:0,deaths:0,tx:p.x||0,tz:p.z||0,ty:0,tyaw:0};
+  return{...p,g,pose,chute,gn,pr:0,tpr:0,body,head,helmet,legL,legR,hit,walk:0,deadT:0,hp:MAX_HP,alive:true,kills:0,deaths:0,tx:p.x||0,tz:p.z||0,ty:0,tyaw:0};
 }
 function removePlayer(id){const p=G.players[id];if(!p)return;scene.remove(p.g);delete G.players[id];renderSB()}
 
@@ -1715,7 +1774,7 @@ function beginGame(m){
   b.style.opacity=1;setTimeout(()=>b.style.opacity=0,3500);
   renderSB();renderTop();hud();
 }
-function endLocalGame(){toggleBig(false);setWP(null);clearDirs();clearThrowables();clearBR();if(G&&G.over&&G.over.mine)scene.remove(G.over.target.g);$('hud').classList.remove('over','win');if(G){for(const id in G.players)scene.remove(G.players[id].g);G=null}P.alive=false}
+function endLocalGame(){clearRockets();toggleBig(false);setWP(null);clearDirs();clearThrowables();clearBR();if(G&&G.over&&G.over.mine)scene.remove(G.over.target.g);$('hud').classList.remove('over','win');if(G){for(const id in G.players)scene.remove(G.players[id].g);G=null}P.alive=false}
 function respawnLocal(x,z){
   Object.assign(P,{x,z,y:1.7,vy:0,hp:MAX_HP,reload:0,alive:true,prone:false,pl:0,noJump:false,rec:0,yaw:Math.atan2(-x,-z)+Math.PI,pitch:0});
   if(G&&G.br){P.w=[];P.cur=0;applyGunModel()} // 배틀로얄: 맨손으로 시작 (주워야 함)
@@ -1850,7 +1909,8 @@ function applyGunModel(){
   if(L>0.5)bx(0.06,0.09,0.24,0,-0.015,L*0.3+0.11,W.pellets>1||W.type.includes('저격')?wood:0x2a2a2a); // 개머리판
   if(W.zoom>=2){const s=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.24,10),M(0x0c0c0c));s.rotation.x=Math.PI/2;s.position.set(0,0.095,-0.02);gun.add(s)} // 스코프
   else bx(0.012,0.03,0.012,0,0.065,-L*0.25,dark);                       // 가늠쇠
-  if(W.pellets>1)bx(0.055,0.05,L*0.3,0,-0.03,-L*0.38,wood);            // 샷건 펌프
+  if(W.pellets>1)bx(0.055,0.05,L*0.3,0,-0.03,-L*0.38,wood);
+  if(W.rocket){const t=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,L*1.1,12),M(sk));t.rotation.x=Math.PI/2;t.position.set(0,0.03,-L*0.15);gun.add(t);const w=new THREE.Mesh(new THREE.ConeGeometry(0.11,0.32,10),M(0x3a4a2a));w.rotation.x=-Math.PI/2;w.position.set(0,0.03,-L*0.7-0.16);gun.add(w)} // RPG 발사관 + 탄두            // 샷건 펌프
   if(W.type==='석궁')bx(0.5,0.02,0.03,0,0.02,-L*0.45,wood);            // 석궁 활대
 }
 function switchTo(i){
@@ -1986,6 +2046,7 @@ function shoot(){
   const W=CW(),slot=P.w[P.cur];
   if(slot.ammo<=0){reload();return}
   slot.ammo--;P.cool=W.cd;flashT=0.05;gunSound(W.snd,1);gun.position.z=-0.4+Math.min(0.14,W.recoil*1.6);
+  if(W.rocket){fireRocket(W);const rk=W.recoil*(zoomed()?0.6:1);P.pitch=Math.min(1.5,P.pitch+rk);P.rec+=rk;if(slot.ammo===0)reload();hud();return} // RPG: 로켓 발사
   const targets=[];for(const id in G.players){const p=G.players[id];if(p.alive)targets.push(...p.hit)}
   if(G.vehs)for(const v of G.vehs.values())if(!v.dead&&v.g.visible&&!(MYV&&MYV.id===v.id))targets.push(...v.hit);let vh=null;
   const all=targets.concat(solids),from=new THREE.Vector3(0.28,-0.2,-0.9).applyMatrix4(camera.matrixWorld);
@@ -2047,6 +2108,11 @@ function loop(){
         else p.g.visible=!p.air&&(!G.br||performance.now()-(p.lastSt||0)<2000||G.vseat[id])&&!(p.protUntil>performance.now()&&Math.floor(performance.now()/110)%2)&&(!G.br||Math.abs(p.g.position.x-camera.position.x)<900&&Math.abs(p.g.position.z-camera.position.z)<900); // 배틀로얄: 900m 밖은 그리지 않음
       }
       if(G.br)p.chute.visible=p.alive&&p.g.position.y-groundH(p.g.position.x,p.g.position.z)>4&&p.g.position.y<200;
+      if(p.alive&&p.g.visible&&Math.abs(p.g.position.x-P.x)<80&&Math.abs(p.g.position.z-P.z)<80){ // 총구가 벽 속이면 총을 당김
+        const a=p.g.rotation.y,tx=p.g.position.x+Math.sin(a)*1.05+Math.cos(a)*0.3,tz=p.g.position.z+Math.cos(a)*1.05-Math.sin(a)*0.3,ty=p.g.position.y+1.38;
+        const inside=nearBoxes(tx,tz,0.2).some(b=>tx>b.minx&&tx<b.maxx&&tz>b.minz&&tz<b.maxz&&ty>b.miny&&ty<b.maxy);
+        const gz=inside?0.12:0.6;p.gn.position.z+=(gz-p.gn.position.z)*Math.min(1,dt*20);
+      }
       let dy=p.tyaw-p.g.rotation.y;dy=Math.atan2(Math.sin(dy),Math.cos(dy));p.g.rotation.y+=dy*Math.min(1,dt*12);
     }
     if(G.endsAt)renderTop();
@@ -2115,11 +2181,13 @@ function loop(){
   for(let i=tracers.length-1;i>=0;i--){tracers[i].t-=dt;if(tracers[i].t<=0){scene.remove(tracers[i].l);tracers.splice(i,1)}}
   if(ARENA>50){const cx=camera.position.x,cz=camera.position.z,cy=groundH(cx,cz);sun.position.set(cx+38,cy+55,cz+22);sun.target.position.set(cx,cy,cz);sun.target.updateMatrixWorld()}
   else if(sun.target.position.x||sun.target.position.z){sun.position.set(HQ?38:30,HQ?55:50,HQ?22:20);sun.target.position.set(0,0,0);sun.target.updateMatrixWorld()}
-  updateParts(dt);updateThrowables(dt);
+  updateParts(dt);updateThrowables(dt);updateRockets(dt);
+  gun.traverse(o=>o.layers.set(1)); // 내 총은 1번 층: 벽보다 앞에 따로 그림 (총이 벽을 뚫고 보이지 않게)
   renderer.render(scene,camera);
+  if(gun.visible&&gun.children.length){const bg=scene.background,au=renderer.shadowMap.autoUpdate;scene.background=null;renderer.shadowMap.autoUpdate=false;renderer.autoClear=false;renderer.clearDepth();camera.layers.set(1);renderer.render(scene,camera);camera.layers.set(0);renderer.autoClear=true;renderer.shadowMap.autoUpdate=au;scene.background=bg}
 }
 function update(dt){
-  const sp=(P.prone?2.6:((keys.ShiftLeft||vSprint||padSprint)?9:5.5))*CW().speed*(zoomed()?0.6:1);
+  const sp=(P.prone?2.6:((keys.ShiftLeft||vSprint||padSprint)?9:5.5))*CW().speed*(zoomed()?0.6:1)*(curMap===5&&BR_DATA&&P.y-1.7<(BR_DATA.water||1)-0.3?0.55:1); // 물속에서는 느림
   let fx=0,fz=0;if(keys.KeyW)fz-=1;if(keys.KeyS)fz+=1;if(keys.KeyA)fx-=1;if(keys.KeyD)fx+=1;
   fx+=joy.x+padJoy.x;fz+=joy.y+padJoy.y;
   const len=Math.hypot(fx,fz);if(len>1){fx/=len;fz/=len}

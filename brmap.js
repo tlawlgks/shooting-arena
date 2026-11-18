@@ -36,33 +36,69 @@
     const vnoise = (x, z) => { const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi, u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf); return (hash(xi, zi) * (1 - u) + hash(xi + 1, zi) * u) * (1 - v) + (hash(xi, zi + 1) * (1 - u) + hash(xi + 1, zi + 1) * u) * v; };
     const fbm = (x, z) => { let s = 0, a = 0.5, f = 1; for (let o = 0; o < 4; o++) { s += vnoise(x * f, z * f) * a; a *= 0.5; f *= 2.1; } return s; };
     const peaks = []; for (let i = 0; i < 9; i++) peaks.push([rnd(-1600, 1600), rnd(-1600, 1600), rnd(320, 620), rnd(120, 250)]);
-    const raw = (x, z) => {
-      let h = fbm(x / 650 + 3.1, z / 650 + 7.7) * 70 + fbm(x / 170 + 11, z / 170 + 5) * 10;
+    const raw0 = (x, z) => {
+      let h = fbm(x / 650 + 3.1, z / 650 + 7.7) * 70 + fbm(x / 170 + 11, z / 170 + 5) * 10 + Math.max(0, fbm(x / 240 + 21, z / 240 + 9) - 0.42) * 90; // 큰 산 + 잔물결 + 곳곳의 언덕
       for (const [px, pz, pr, ph] of peaks) { const d = Math.hypot(x - px, z - pz) / pr; if (d < 2.2) h += ph * Math.exp(-d * d * 2.2); }
       const e = Math.max(0, Math.min(1, (S - Math.max(Math.abs(x), Math.abs(z))) / 380)); // 가장자리는 낮게
       return h * e * e * (3 - 2 * e);
+    };
+    // 강 2줄기(섬을 가로지르며 산을 만나면 깊은 골짜기를 깎음) + 마른 협곡 2개(산을 가르는 가파른 계곡)
+    const cuts = [];
+    for (let k = 0; k < 2; k++) {
+      const a = rnd(0, 6.283), head = a + Math.PI + rnd(-0.35, 0.35), pts = []; let x = Math.cos(a) * 2150, z = Math.sin(a) * 2150, dir = head;
+      for (let i = 0; i < 160; i++) { pts.push([x, z]); dir = dir * 0.85 + head * 0.15 + rnd(-0.5, 0.5); x += Math.cos(dir) * 35; z += Math.sin(dir) * 35; if (i > 10 && (Math.abs(x) > 2150 || Math.abs(z) > 2150)) { pts.push([x, z]); break; } }
+      cuts.push({ river: true, w: 14, pts });
+    }
+    for (let k = 0; k < 2; k++) {
+      const p = peaks[k], dir0 = rnd(0, 6.283), pts = []; let x = p[0] - Math.cos(dir0) * 600, z = p[1] - Math.sin(dir0) * 600, dir = dir0;
+      for (let i = 0; i < 36; i++) { pts.push([x, z]); dir += rnd(-0.25, 0.25); x += Math.cos(dir) * 35; z += Math.sin(dir) * 35; }
+      cuts.push({ river: false, w: 11, pts });
+    }
+    for (const c of cuts) { let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const [x, z] of c.pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); } c.bb = [x0 - 260, x1 + 260, z0 - 260, z1 + 260]; }
+    const polyDist = (pts, x, z) => { let best = 1e9; for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz; let t = l2 ? ((x - ax) * dx + (z - az) * dz) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; const ex = ax + dx * t - x, ez = az + dz * t - z, d = ex * ex + ez * ez; if (d < best) best = d; } return Math.sqrt(best); };
+    const WATER = 1.0; // 물 높이 (강바닥은 그보다 낮음)
+    const DN = 128; { const GW = DN + 1, gs = 2 * S / DN; // 강·협곡까지의 거리를 31m 격자에 미리 계산 (빠르게)
+      for (const c of cuts) { c.dg = new Float32Array(GW * GW); for (let iz = 0; iz < GW; iz++) for (let ix = 0; ix < GW; ix++) { const x = ix * gs - S, z = iz * gs - S; c.dg[iz * GW + ix] = (x < c.bb[0] || x > c.bb[1] || z < c.bb[2] || z > c.bb[3]) ? 1e4 : polyDist(c.pts, x, z); } } }
+    const cutDist = (c, x, z) => { const GW = DN + 1, gs = 2 * S / DN; let fx = (x + S) / gs, fz = (z + S) / gs; fx = Math.max(0, Math.min(DN - 1e-6, fx)); fz = Math.max(0, Math.min(DN - 1e-6, fz)); const ix = fx | 0, iz = fz | 0, u = fx - ix, v = fz - iz, g = c.dg;
+      return (g[iz * GW + ix] * (1 - u) + g[iz * GW + ix + 1] * u) * (1 - v) + (g[(iz + 1) * GW + ix] * (1 - u) + g[(iz + 1) * GW + ix + 1] * u) * v; };
+    const raw = (x, z) => {
+      let h = raw0(x, z);
+      for (const c of cuts) {
+        if (x < c.bb[0] || x > c.bb[1] || z < c.bb[2] || z > c.bb[3]) continue;
+        const d = cutDist(c, x, z), bed = c.river ? -1.2 : Math.max(3, h * 0.25); if (h <= bed) continue;
+        const bw = c.river ? 7 + (h - bed) * 0.55 : 4 + (h - bed) * 0.28; // 둑 폭: 높은 곳을 지날수록 깊고 가파른 골짜기
+        if (d <= c.w) h = bed; else if (d < c.w + bw) { const t = (d - c.w) / bw, s = t * t * (3 - 2 * t); h = bed * (1 - s) + h * s; }
+      }
+      return h;
     };
     const slope = (x, z) => Math.max(Math.abs(raw(x + 25, z) - raw(x - 25, z)), Math.abs(raw(x, z + 25) - raw(x, z - 25)));
 
     // ---------- 2. 마을 터와 외딴집 터 고르기 (낮고 완만한 곳) ----------
     for (let tries = 0; towns.length < 24 && tries < 4000; tries++) {
       const x = rnd(-1700, 1700), z = rnd(-1700, 1700), h = raw(x, z);
-      if (h > 75 || slope(x, z) > 9 || towns.some(t => Math.hypot(t[0] - x, t[1] - z) < 520)) continue;
+      if (h > 75 || h < 3 || slope(x, z) > 9 || towns.some(t => Math.hypot(t[0] - x, t[1] - z) < 520)) continue;
       const r = ri(45, 72); towns.push([f2(x), f2(z), r, TOWN_NAMES[towns.length], f2(h)]); sites.push([x, z, r, 70, h]);
     }
     const lone = [];
     for (let tries = 0; lone.length < 70 && tries < 3000; tries++) {
       const x = rnd(-1800, 1800), z = rnd(-1800, 1800), h = raw(x, z);
-      if (h > 110 || slope(x, z) > 7 || towns.some(t => Math.hypot(t[0] - x, t[1] - z) < t[2] + 90) || lone.some(l => Math.hypot(l[0] - x, l[1] - z) < 60)) continue;
+      if (h > 110 || h < 3 || slope(x, z) > 7 || towns.some(t => Math.hypot(t[0] - x, t[1] - z) < t[2] + 90) || lone.some(l => Math.hypot(l[0] - x, l[1] - z) < 60)) continue;
       lone.push([x, z, h]); sites.push([x, z, 14, 26, h]);
     }
+    // 특수 지형지물 터: 성(언덕 위 가능), 군부대(벙커·참호), 높은 탑
+    const castles = [], camps = [], spires = [], away = (x, z, d) => !towns.some(t => Math.hypot(t[0] - x, t[1] - z) < t[2] + d) && ![...castles, ...camps, ...spires].some(q => Math.hypot(q[0] - x, q[1] - z) < q[3] + d);
+    for (let tries = 0; castles.length < 3 && tries < 3000; tries++) { const x = rnd(-1650, 1650), z = rnd(-1650, 1650), h = raw(x, z); if (h < 6 || h > 190 || slope(x, z) > 16 || !away(x, z, 160)) continue; castles.push([x, z, h, 34]); sites.push([x, z, 34, 45, h]); }
+    for (let tries = 0; camps.length < 5 && tries < 3000; tries++) { const x = rnd(-1700, 1700), z = rnd(-1700, 1700), h = raw(x, z); if (h < 4 || h > 120 || slope(x, z) > 9 || !away(x, z, 140)) continue; camps.push([x, z, h, 36]); sites.push([x, z, 36, 40, h]); }
+    for (let tries = 0; spires.length < 9 && tries < 3000; tries++) { const x = rnd(-1750, 1750), z = rnd(-1750, 1750), h = raw(x, z); if (h < 4 || h > 220 || slope(x, z) > 14 || !away(x, z, 70)) continue; spires.push([x, z, h, 9]); sites.push([x, z, 9, 22, h]); }
 
     // ---------- 3. 높이맵 (터는 평평하게 다지고 주변과 부드럽게 이음) ----------
     const W = N + 1, seg = 2 * S / N, H = new Float32Array(W * W);
     for (let iz = 0; iz < W; iz++) for (let ix = 0; ix < W; ix++) {
       const x = ix * seg - S, z = iz * seg - S; let h = raw(x, z);
-      for (const [sx, sz, sr, fall, base] of sites) {
-        const d = Math.hypot(x - sx, z - sz), fr = sr + seg * 1.6; if (d >= fr + fall) continue; // 높이맵 칸 크기만큼 더 넓게 평평하게 (건물 바닥이 기울지 않게)
+      for (let si = 0; si < sites.length; si++) {
+        const st = sites[si], sr = st[2], fall = st[3], base = st[4], fr = sr + seg * 1.6, reach = fr + fall, dx = x - st[0], dz = z - st[1];
+        if (dx > reach || dx < -reach || dz > reach || dz < -reach) continue; // 멀면 바로 건너뜀
+        const d = Math.sqrt(dx * dx + dz * dz); if (d >= reach) continue; // 높이맵 칸 크기만큼 더 넓게 평평하게 (건물 바닥이 기울지 않게)
         if (d <= fr) h = base; else { const t = (d - fr) / fall, s = t * t * (3 - 2 * t); h = base * (1 - s) + h * s; }
       }
       H[iz * W + ix] = f2(h);
@@ -146,6 +182,69 @@
         addLoot(x + (along ? rnd(-4, 4) : 1.9), 0, z + (along ? 1.9 : rnd(-4, 4)));
       }
     }
+    function spire(cx, cz) { // 높은 탑: 4층 + 옥상 (층마다 계단, 창문, 옥상 난간)
+      const s = 7.2, FH = 4, NF = 4, x0 = cx - s / 2, x1 = cx + s / 2, z0 = cz - s / 2, z1 = cz + s / 2, c = pick([0x9a958a, 0xa89a82, 0x8a8d90]), k = 'concrete';
+      foot.push([x0, x1, z0, z1]);
+      for (let f = 0; f < NF; f++) {
+        const base = f * FH, door = i => f === 0 && i === 0;
+        wall(true, z0 + T / 2, x0, x1, base, FH, openings(x0, x1, door(0)), c, k); wall(true, z1 - T / 2, x0, x1, base, FH, openings(x0, x1, false), c, k);
+        wall(false, x0 + T / 2, z0 + T, z1 - T, base, FH, openings(z0 + T, z1 - T, false), c, k); wall(false, x1 - T / 2, z0 + T, z1 - T, base, FH, openings(z0 + T, z1 - T, false), c, k);
+        const n = 8, rise = FH / n, run = 0.68, sw = 1.3, west = f % 2 === 0;
+        const sx0 = west ? x0 + T : x1 - T - sw, sx1 = sx0 + sw, sStart = west ? z0 + T + 0.3 : z1 - T - 0.3;
+        for (let i = 0; i < n; i++) { const a = west ? sStart + i * run : sStart - (i + 1) * run; B(sx0, sx1, base, base + (i + 1) * rise, a, a + run, 0x8a8478, 'concrete'); }
+        const L = base + FH, sEnd = west ? sStart + n * run : sStart - n * run; // 위층 바닥 (올라오는 계단 자리는 비움)
+        if (west) { B(sx1, x1 - T, L - 0.25, L, z0 + T, z1 - T, 0x7a7468, 'wood'); B(sx0, sx1, L - 0.25, L, sEnd, z1 - T, 0x7a7468, 'wood'); }
+        else { B(x0 + T, sx0, L - 0.25, L, z0 + T, z1 - T, 0x7a7468, 'wood'); B(sx0, sx1, L - 0.25, L, z0 + T, sEnd, 0x7a7468, 'wood'); }
+        addLoot(west ? rnd(sx1 + 0.7, x1 - T - 0.7) : rnd(x0 + T + 0.7, sx0 - 0.7), base, rnd(z0 + T + 0.8, z1 - T - 0.8));
+      }
+      const top = NF * FH; // 옥상 난간 (총을 쏠 수 있는 높이)
+      B(x0 - 0.2, x1 + 0.2, top, top + 1.1, z0 - 0.2, z0 + 0.2, c, k); B(x0 - 0.2, x1 + 0.2, top, top + 1.1, z1 - 0.2, z1 + 0.2, c, k);
+      B(x0 - 0.2, x0 + 0.2, top, top + 1.1, z0 + 0.2, z1 - 0.2, c, k); B(x1 - 0.2, x1 + 0.2, top, top + 1.1, z0 + 0.2, z1 - 0.2, c, k);
+      addLoot(cx - 1.2, top, cz); addLoot(cx + 1.2, top, cz - 1);
+    }
+    function castle(cx, cz) { // 성: 두꺼운 성벽(위를 걸을 수 있음) + 성문 + 모서리 망루 + 가운데 높은 탑
+      const W2 = 22, t = 1.7, H = 7, x0 = cx - W2, x1 = cx + W2, z0 = cz - W2, z1 = cz + W2, c = 0xa49c8c, k = 'concrete', gw = 2.5;
+      foot.push([x0 - 4, x1 + 4, z0 - 4, z1 + 4]);
+      B(x0, x1, 0, H, z1 - t, z1, c, k); B(x0, x0 + t, 0, H, z0 + t, z1 - t, c, k); B(x1 - t, x1, 0, H, z0 + t, z1 - t, c, k);
+      B(x0, cx - gw, 0, H, z0, z0 + t, c, k); B(cx + gw, x1, 0, H, z0, z0 + t, c, k); B(cx - gw, cx + gw, 4.6, H, z0, z0 + t, c, k); // 남쪽 성문
+      for (const [a0, a1, b0, b1] of [[x0, x1, z1 - 0.45, z1], [x0, x1, z0, z0 + 0.45], [x0, x0 + 0.45, z0, z1], [x1 - 0.45, x1, z0, z1]]) // 바깥쪽 난간 (톱니 모양)
+        for (let p = 0; p < 1; p += 0.0625) { const ax = a0 + (a1 - a0) * p, bx = a0 + (a1 - a0) * (p + 0.035), az = b0 + (b1 - b0) * p, bz = b0 + (b1 - b0) * (p + 0.035); if (a1 - a0 > b1 - b0) B(ax, bx, H, H + 1.2, b0, b1, c, k); else B(a0, a1, H, H + 1.2, az, bz, c, k); }
+      for (const [tx, tz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) { B(tx - 3.5, tx + 3.5, 0, 11, tz - 3.5, tz + 3.5, 0x968e80, 'brick'); B(tx - 3.5, tx + 3.5, 11, 12.2, tz - 3.5, tz - 2.9, 0x968e80, 'brick'); B(tx - 3.5, tx + 3.5, 11, 12.2, tz + 2.9, tz + 3.5, 0x968e80, 'brick'); }
+      const n = 14, rise = H / n, run = 0.8; // 성벽 위로 오르는 계단 2곳
+      for (let i = 0; i < n; i++) { B(x0 + 6 + i * run, x0 + 6 + (i + 1) * run, 0, (i + 1) * rise, z1 - t - 1.5, z1 - t, 0x8a8478, k); B(x1 - 6 - (i + 1) * run, x1 - 6 - i * run, 0, (i + 1) * rise, z0 + t, z0 + t + 1.5, 0x8a8478, k); }
+      spire(cx, cz + 4);
+      for (let i = 0; i < 4; i++) { const hx = cx + rnd(-15, 15), hz = cz + rnd(-15, -6), s2 = rnd(1.2, 1.8); B(hx - s2 / 2, hx + s2 / 2, 0, rnd(1, 1.8), hz - s2 / 2, hz + s2 / 2, 0xb48c58, 'wood'); }
+      for (let i = 0; i < 4; i++) addLoot(cx + rnd(-17, 17), 0, cz + rnd(-17, 17));
+      addLoot(x0 + 3, H, z1 - 0.9); addLoot(x1 - 3, H, z0 + 0.9);
+    }
+    function bunker(cx, cz) { // 벙커: 두꺼운 콘크리트, 사격용 가로 틈, 입구 하나
+      const al = R() < 0.5, w = al ? 9 : 6.5, d = al ? 6.5 : 9, x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2, t = 0.6, H = 2.5, c = 0x80847c, k = 'concrete';
+      if (!fits(x0, x1, z0, z1, 2) || onRoad(x0, x1, z0, z1)) return; foot.push([x0, x1, z0, z1]);
+      const side = (a0, a1, b0, b1, door) => { // 낮은 벽 + 틈 + 위쪽 벽
+        if (door) { const m = (a0 + a1) / 2; for (const [p0, p1] of [[a0, m - 0.8], [m + 0.8, a1]]) { B(p0, p1, 0, H, b0, b1, c, k); } B(m - 0.8, m + 0.8, 2.1, H, b0, b1, c, k); }
+        else { B(a0, a1, 0, 1.45, b0, b1, c, k); B(a0, a1, 1.8, H, b0, b1, c, k); B(a0, a0 + 0.5, 1.45, 1.8, b0, b1, c, k); B(a1 - 0.5, a1, 1.45, 1.8, b0, b1, c, k); }
+      };
+      side(x0, x1, z0, z0 + t, true); side(x0, x1, z1 - t, z1, false);
+      const sz = (a0, a1, b0, b1) => { B(b0, b1, 0, 1.45, a0, a1, c, k); B(b0, b1, 1.8, H, a0, a1, c, k); B(b0, b1, 1.45, 1.8, a0, a0 + 0.5, c, k); B(b0, b1, 1.45, 1.8, a1 - 0.5, a1, c, k); };
+      sz(z0 + t, z1 - t, x0, x0 + t); sz(z0 + t, z1 - t, x1 - t, x1);
+      B(x0 - 0.3, x1 + 0.3, H, H + 0.6, z0 - 0.3, z1 + 0.3, 0x74786f, k); B(x0, x1, H + 0.6, H + 1.1, z1 - 0.6, z1, 0xc2b08a, 'sandbag'); // 두꺼운 지붕 + 모래주머니
+      addLoot(cx - 1.5, 0, cz); addLoot(cx + 1.5, 0, cz + 1);
+    }
+    function trench(x, z, len, alongX) { // 참호: 흙·모래주머니 벽 사이 좁은 통로 (중간중간 꺾인 방호벽)
+      const hw = 0.95, wt = 0.7, hh = 1.3, c = 0x7a6448, k = 'sandbag';
+      const x0 = alongX ? x - len / 2 : x - hw - wt, x1 = alongX ? x + len / 2 : x + hw + wt, z0 = alongX ? z - hw - wt : z - len / 2, z1 = alongX ? z + hw + wt : z + len / 2;
+      if (!fits(x0, x1, z0, z1, 1.5) || onRoad(x0, x1, z0, z1)) return; foot.push([x0, x1, z0, z1]);
+      if (alongX) { B(x0, x1, 0, hh, z - hw - wt, z - hw, c, k); B(x0, x1, 0, hh, z + hw, z + hw + wt, c, k); for (let p = x0 + 7; p < x1 - 3; p += 7) B(p, p + 0.7, 0, hh, z - hw, z - hw + 0.8, c, k); }
+      else { B(x - hw - wt, x - hw, 0, hh, z0, z1, c, k); B(x + hw, x + hw + wt, 0, hh, z0, z1, c, k); for (let p = z0 + 7; p < z1 - 3; p += 7) B(x - hw, x - hw + 0.8, 0, hh, p, p + 0.7, c, k); }
+      addLoot(alongX ? x + rnd(-len / 3, len / 3) : x, 0, alongX ? z : z + rnd(-len / 3, len / 3));
+    }
+    function camp(cx, cz) { // 군부대: 벙커 2~3개, 참호선, 망루, 모래주머니
+      for (let i = 0; i < 3; i++) bunker(cx + rnd(-24, 24), cz + rnd(-24, 24));
+      for (let i = 0; i < 3; i++) { const al = R() < 0.5; trench(cx + rnd(-26, 26), cz + rnd(-26, 26), rnd(18, 32), al); }
+      tower(cx + rnd(-20, 20), cz + rnd(-20, 20));
+      for (let i = 0; i < 4; i++) cover(cx + rnd(-28, 28), cz + rnd(-28, 28));
+      if (R() < 0.6) containers(cx + rnd(-18, 18), cz + rnd(-18, 18));
+    }
     const cover = (x, z) => { const al = R() < 0.5, hw = rnd(1.5, 3), x0 = al ? x - hw : x - 0.3, x1 = al ? x + hw : x + 0.3, z0 = al ? z - 0.3 : z - hw, z1 = al ? z + 0.3 : z + hw;
       if (!fits(x0, x1, z0, z1, 1.5) || onRoad(x0, x1, z0, z1)) return; foot.push([x0, x1, z0, z1]); const sb = R() < 0.6; B(x0, x1, 0, 1.1, z0, z1, sb ? 0xc2b08a : 0xb5b5b0, sb ? 'sandbag' : 'concrete'); if (R() < 0.35) addLoot(al ? x : x + 1.2, 0, al ? z + 1.2 : z); };
 
@@ -178,6 +277,10 @@
       for (let i = 0; i < 9; i++) { const ang = R() * 6.283, dist = rnd(tr * 0.3, tr + 40), x = tx + Math.cos(ang) * dist, z = tz + Math.sin(ang) * dist; if (fits(x - 0.6, x + 0.6, z - 0.6, z + 0.6, 1.2)) spawns.push([f2(x), f2(z)]); }
     }
     for (const [x, z, base] of lone) building(x, z, R() < 0.7 ? 'h1' : 'h2', base); // 외딴집
+    for (const [x, z, h] of castles) { BY = h; castle(x, z); BY = 0; } // 성
+    for (const [x, z, h] of camps) { BY = h; camp(x, z); BY = 0; }     // 군부대
+    for (const [x, z, h] of spires) { BY = h; if (fits(x - 4, x + 4, z - 4, z + 4, 2)) spire(x, z); BY = 0; } // 높은 탑
+    for (const t of towns) if (R() < 0.35) { BY = t[4]; const a = R() * 6.283, d = rnd(10, t[2] - 10), x = t[0] + Math.cos(a) * d, z = t[1] + Math.sin(a) * d; if (fits(x - 4, x + 4, z - 4, z + 4, 3) && !onRoad(x - 5, x + 5, z - 5, z + 5)) spire(x, z); BY = 0; } // 마을 안 높은 탑
 
     // ---------- 7. 바위, 나무, 밭 ----------
     for (let a = 0; a < 500 && rocks.length < 260; a++) {
@@ -187,7 +290,7 @@
     }
     for (let a = 0; a < 9000 && trees.length < 3200; a++) {
       const x = rnd(-1940, 1940), z = rnd(-1940, 1940), y = hAt(x, z);
-      if (y > 175 || towns.some(t => Math.hypot(t[0] - x, t[1] - z) < t[2] * 0.85) || onRoad(x - 1, x + 1, z - 1, z + 1) || !fits(x - 0.5, x + 0.5, z - 0.5, z + 0.5, 1)) continue;
+      if (y > 175 || y < 2.2 || towns.some(t => Math.hypot(t[0] - x, t[1] - z) < t[2] * 0.85) || onRoad(x - 1, x + 1, z - 1, z + 1) || !fits(x - 0.5, x + 0.5, z - 0.5, z + 0.5, 1)) continue;
       trees.push([f2(x), f2(z), R() < (y > 90 ? 0.75 : 0.35) ? 0 : 1, f2(y - 0.2)]); // 높은 곳일수록 소나무
     }
     for (let i = 0; i < 60; i++) fields.push([f2(rnd(-1850, 1850)), f2(rnd(-1850, 1850)), ri(40, 110), R() < 0.6 ? 'dirt' : 'sand']);
@@ -202,7 +305,7 @@
         vehicles.push([f2(x), f2(z), f2((ax ? Math.PI / 2 : 0) + (R() < 0.5 ? Math.PI : 0)), R() < 0.6 ? 'jeep' : 'buggy']);
       }
     }
-    return { S, N, H, boxes, loot, trees, rocks, towns, roads, fields, spawns, peaks, vehicles };
+    return { S, N, H, boxes, loot, trees, rocks, towns, roads, fields, spawns, peaks, vehicles, water: WATER, castles: castles.map(c => [f2(c[0]), f2(c[1])]), camps: camps.map(c => [f2(c[0]), f2(c[1])]) };
   }
   // 차량 종류: 좌석(차 기준 x=왼쪽, y=엉덩이 높이, z=앞), 최고 속도(m/s), 가속, 내구도, 길이, 폭
   const VEH = {

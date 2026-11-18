@@ -85,6 +85,8 @@
       ['IWI Negev', '경기관총', 21, 0.085, 100, 4.8, 0.022, 0.8], ['H&K MG4', '경기관총', 22, 0.10, 100, 4.8, 0.021, 0.8], ['Stoner 63', '경기관총', 23, 0.10, 75, 4.2, 0.022, 0.82],
       ['K3', '경기관총', 21, 0.10, 100, 4.6, 0.022, 0.8], ['H&K HK21', '다목적 기관총', 31, 0.16, 50, 4.2, 0.032, 0.74],
     ].map(a => W(a[0], a[1], a[2], a[3], a[4], a[5], { len: 0.74, spread: 0.012, snd: a[1].includes('다목적') ? 80 : 100, speed: a[7], recoil: a[6], color: 0x2e2e2e })),
+    // 로켓: 탄창 1발, 재장전 1초. 직격 50(머리 100) + 폭발 100. 로켓은 직선으로 날아가 벽·땅·사람에 닿으면 폭발
+    W('RPG-7', '로켓', 50, 1.0, 1, 1.0, { rocket: true, len: 0.95, zoom: 1.5, spread: 0.002, snd: 50, speed: 0.85, color: 0x4a5a3a, recoil: 0.12 }),
   ];
   L.forEach((w, i) => w.id = i);
   // 반동: 한 발당 시점이 위로 튀는 각도(라디안). 조준/엎드리면 줄어듦
@@ -141,14 +143,14 @@
   // 배틀로얄 탄약: 총마다 쓰는 탄 종류. c=탄약 상자 색, box=상자 하나에 든 양
   L.AMMO = {
     '9mm': { c: 0xe8c84a, box: 30 }, '.45 ACP': { c: 0xe8873a, box: 25 }, '5.56mm': { c: 0x4ccb5a, box: 30 }, '7.62mm': { c: 0xd94a3a, box: 30 },
-    '12게이지': { c: 0x9a2a2a, box: 10 }, '.300 매그넘': { c: 0x3a7ae8, box: 8 }, '.50 BMG': { c: 0x9a4ae8, box: 5 }, '화살': { c: 0x8a6a3a, box: 5 } };
+    '12게이지': { c: 0x9a2a2a, box: 10 }, '.300 매그넘': { c: 0x3a7ae8, box: 8 }, '.50 BMG': { c: 0x9a4ae8, box: 5 }, '화살': { c: 0x8a6a3a, box: 5 }, '로켓': { c: 0xff6a00, box: 1 } };
   const AMMO_OF = {
     '.45 ACP': ['Colt Python', 'Desert Eagle', 'M1911', 'H&K USP45', 'S&W Model 29', 'UMP45', 'KRISS Vector', 'MAC-10', 'Thompson M1A1'],
     '5.56mm': ['M4A1', 'M416', 'M16A4', 'Steyr AUG', 'FAMAS', 'G36C', 'SCAR-L', 'QBZ-95', 'Galil ACE', 'IWI Tavor TAR-21', 'L85A2', 'SIG SG 553', 'K2', 'AAC Honey Badger', 'AK-74', 'AKS-74U',
       'M249', 'IWI Negev', 'H&K MG4', 'Stoner 63', 'K3', 'Ruger Mini-14', 'QBU-88'],
     '7.62mm': ['AK-47', 'AKM', 'AK-12', 'Beryl M762', 'OTs-14 Groza', 'SCAR-H', 'FN FAL', 'H&K G3', 'M14', 'SKS', 'Mk 14 EBR', 'L1A1 SLR', 'Dragunov SVD', 'M110 SASS', 'H&K PSG1',
       'VSS Vintorez', 'Kar98k', 'M24', 'Mosin-Nagant', 'M40A5', 'Remington M700', 'Winchester 1894', 'RPK', 'M60', 'PKM', 'MG42', 'MG3', 'M240B', 'RPD', 'DP-28', 'H&K HK21'],
-    '.300 매그넘': ['AWM', 'L96A1'], '.50 BMG': ['Barrett M82A1', 'CheyTac M200', 'Denel NTW-20', 'AS50'], '화살': ['Barnett Ghost 410'] };
+    '.300 매그넘': ['AWM', 'L96A1'], '.50 BMG': ['Barrett M82A1', 'CheyTac M200', 'Denel NTW-20', 'AS50'], '화살': ['Barnett Ghost 410'], '로켓': ['RPG-7'] };
   const ammoByName = {}; for (const a in AMMO_OF) for (const n of AMMO_OF[a]) ammoByName[n] = a;
   L.forEach(w => { w.ammo = ammoByName[w.name] || (w.type.includes('샷건') ? '12게이지' : '9mm'); });
   g.REWARDS = L.REWARDS;
