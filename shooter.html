@@ -973,6 +973,162 @@ function instTrees(list){ // 나무 수백 그루를 인스턴스로 (줄기 1�
   for(const im of [trunk,pine,leaf]){im.castShadow=true;im.instanceMatrix.needsUpdate=true;if(im.instanceColor)im.instanceColor.needsUpdate=true;mapGroup.add(im)}
   if(!pines.length)pine.count=0;if(!leafs.length)leaf.count=0;solids.push(trunk);
 }
+// =====================================================================
+// 랜드마크 건축물 20종: 원기둥·원뿔·돔·아치 등으로 만든 3D 모델 (충돌 상자는 brmap.js의 LM)
+// =====================================================================
+const _lmm={},LM_ANIM=[],CUR_MARKS=[];
+function LMM(c,o){const k=c+'|'+(o?JSON.stringify(o):'');if(_lmm[k])return _lmm[k];let m;
+  if(o&&o.glass)m=new THREE.MeshPhongMaterial({color:c,transparent:true,opacity:o.op||0.5,shininess:120,specular:0xffffff,side:THREE.DoubleSide,depthWrite:false});
+  else if(o&&o.emis)m=new THREE.MeshBasicMaterial({color:c});
+  else if(o&&o.shiny)m=new THREE.MeshPhongMaterial({color:c,shininess:90,specular:0x999999});
+  else m=new THREE.MeshLambertMaterial({color:c,flatShading:!!(o&&o.flat),side:o&&o.ds?THREE.DoubleSide:THREE.FrontSide});
+  return o&&o.own?m:(_lmm[k]=m)}
+function lmKit(g){
+  const put=(geo,c,x,y,z,o={})=>{const m=new THREE.Mesh(geo,LMM(c,o.m));m.position.set(x,y,z);if(o.rx)m.rotation.x=o.rx;if(o.ry)m.rotation.y=o.ry;if(o.rz)m.rotation.z=o.rz;if(o.sx)m.scale.x=o.sx;if(o.sy)m.scale.y=o.sy;if(o.sz)m.scale.z=o.sz;m.castShadow=!(o.m&&o.m.glass);m.receiveShadow=true;(o.to||g).add(m);return m};
+  return{put,
+    box:(w,h,d,x,y,z,c,o)=>put(new THREE.BoxGeometry(w,h,d),c,x,y+h/2,z,o),                                   // y = 바닥
+    cyl:(rt,rb,h,x,y,z,c,o={})=>put(new THREE.CylinderGeometry(rt,rb,h,o.seg||18,1,!!o.open,o.ts||0,o.tl||Math.PI*2),c,x,y+h/2,z,o),
+    cone:(r,h,x,y,z,c,o={})=>put(new THREE.ConeGeometry(r,h,o.seg||18),c,x,y+h/2,z,o),
+    sph:(r,x,y,z,c,o={})=>put(new THREE.SphereGeometry(r,o.seg||20,o.seg2||14,0,Math.PI*2,0,o.half?Math.PI/2:Math.PI),c,x,y,z,o),
+    tor:(r,t,x,y,z,c,o={})=>put(new THREE.TorusGeometry(r,t,6,o.seg||28,o.arc||Math.PI*2),c,x,y,z,o),
+    beam:(a,b,t,c,o={})=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),m=new THREE.Mesh(new THREE.BoxGeometry(t,t,A.distanceTo(B)),LMM(c,o.m));m.position.copy(A).add(B).multiplyScalar(0.5);m.lookAt(B);m.castShadow=true;(o.to||g).add(m);return m},
+    grp:(x,y,z)=>{const q=new THREE.Group();q.position.set(x,y,z);g.add(q);return q},
+    spin:(obj,ax,sp)=>LM_ANIM.push({obj,ax,sp}),
+    blink:(mat,c1,c2,per)=>LM_ANIM.push({mat,c1,c2,per}),
+  };
+}
+const LMV=[
+  k=>{ // 0 등대: 빨강·흰 줄무늬 원뿔대, 전망대, 회전하는 불빛
+    k.cyl(5,5,1,0,0,0,0x9a958a,{seg:8,m:{flat:1}});
+    for(let i=0;i<7;i++){const r0=3.6-i*0.143,r1=r0-0.143;k.cyl(r1,r0,4,0,1+i*4,0,i%2?0xc8322a:0xf2f0ea)}
+    k.box(1.4,2.2,0.3,0,1,-3.55,0x3a2a1a);k.cyl(3.7,3.7,0.3,0,29,0,0x2a2a2a);k.cyl(3.6,3.6,0.9,0,29.3,0,0x2a2a2a,{open:1,seg:24,m:{ds:1}});
+    k.cyl(2,2,3,0,29.3,0,0xfff3b0,{m:{glass:1,op:0.55}});k.cone(2.4,2.4,0,32.3,0,0xc8322a);k.sph(0.5,0,35,0,0x2a2a2a);
+    const lamp=k.grp(0,30.8,0);k.put(new THREE.SphereGeometry(0.7,12,8),0xfff6c0,0,0,0,{m:{emis:1},to:lamp});
+    const beamGeo=new THREE.ConeGeometry(2.2,26,12,1,true);beamGeo.translate(0,-13,0);const bm=new THREE.Mesh(beamGeo,new THREE.MeshBasicMaterial({color:0xfff6c0,transparent:true,opacity:0.16,depthWrite:false,side:THREE.DoubleSide}));bm.rotation.z=Math.PI/2;lamp.add(bm);k.spin(lamp,'y',0.9);
+  },
+  k=>{ // 1 풍차: 돌 탑 + 나무 지붕 + 돌아가는 날개 4개
+    k.cyl(3.2,4.5,13,0,0,0,0xb8ad96,{seg:10,m:{flat:1}});k.box(1.5,2.4,0.4,0,0,-4.2,0x4a3220);for(const y of [5,9])k.box(0.9,1.1,0.3,0,y,-3.9+y*0.08,0x2a2018);
+    k.cone(3.5,3.4,0,13,0,0x6a4a2e,{seg:10,m:{flat:1}});
+    const hub=k.grp(0,13.6,-3.6);k.put(new THREE.CylinderGeometry(0.5,0.6,1.2,10),0x3a2a1a,0,0,0,{rx:Math.PI/2,to:hub});
+    for(let i=0;i<4;i++){const arm=new THREE.Group();arm.rotation.z=i*Math.PI/2;hub.add(arm);k.put(new THREE.BoxGeometry(0.35,9,0.15),0x5a4028,0,4.6,-0.3,{to:arm});k.put(new THREE.BoxGeometry(1.8,6.5,0.06),0xe8dcc0,0.95,5.4,-0.35,{to:arm})}
+    k.spin(hub,'z',0.7);
+  },
+  k=>{ // 2 급수탑: 다리 4개 + X자 보강 + 녹슨 물탱크
+    for(const [x,z] of [[3,3],[-3,3],[3,-3],[-3,-3]])k.cyl(0.3,0.35,14,x,0,z,0x5a5048,{seg:8});
+    for(const y of [4.5,9.5])for(const [a,b] of [[[3,y,3],[-3,y+4,3]],[[-3,y,3],[3,y+4,3]],[[3,y,-3],[-3,y+4,-3]],[[-3,y,-3],[3,y+4,-3]],[[3,y,3],[3,y+4,-3]],[[3,y,-3],[3,y+4,3]],[[-3,y,3],[-3,y+4,-3]],[[-3,y,-3],[-3,y+4,3]]])k.beam(a,b,0.15,0x5a5048);
+    k.cyl(4.5,4.5,5,0,14,0,0x9a4a32);for(const y of [15.2,16.8,18.4])k.cyl(4.55,4.55,0.15,0,y,0,0x6a3222);k.cone(4.8,2,0,19,0,0x7a3a28);
+    k.cyl(4.9,4.9,0.2,0,14,0,0x4a4038);for(let i=0;i<14;i++)k.box(0.08,0.1,0.5+0*i,-0.2,0.7+i,-3.4,0x333333);k.box(0.08,14,0.08,-0.6,0,-3.4,0x333333);k.box(0.08,14,0.08,0.2,0,-3.4,0x333333);
+  },
+  k=>{ // 3 계단 피라미드: 7단 + 정면 계단 + 꼭대기 신전 (올라갈 수 있음)
+    for(let i=0;i<7;i++){const hs=16-1.8*i;k.box(hs*2,2.4,hs*2,0,2.4*i,0,i%2?0xc9a86a:0xbf9c5e,{m:{flat:1}})}
+    for(let i=0;i<35;i++)k.box(3.2,0.48,0.36,0,i*0.48,-17.2+i*0.36+0.18,0xd8bd84);
+    k.box(5,4,5,0,16.8,0,0xa88a52);k.box(6,0.5,6,0,20.8,0,0x8a6e3e);for(const [x,z] of [[2.2,-2.6],[-2.2,-2.6]])k.box(0.6,4,0.6,x,16.8,z,0x8a6e3e);k.box(1.6,2.6,0.2,0,16.8,-2.55,0x2a2018);
+  },
+  k=>{ // 4 돔 사원: 흰 본당 + 청록 돔 + 첨탑 4개
+    k.box(16,9,16,0,0,0,0xece4d2);k.box(16.4,0.6,16.4,0,9,0,0xd4c8ac);for(const s of [-1,1])for(const t of [-4,0,4]){k.box(1.6,3.2,0.2,t,3,-8.05,0x3a5a6a);k.box(0.2,3.2,1.6,s*8.05,3,t,0x3a5a6a)}
+    k.box(3,5,0.3,0,0,-8.1,0x5a3a22);k.cyl(6,6,2,0,9,0,0xe0d6c0);k.sph(6,0,11,0,0x2f8a86,{half:1,sy:1.15,m:{shiny:1}});k.cyl(0.15,0.15,3,0,17.5,0,0xd4a42a);k.sph(0.5,0,20.6,0,0xd4a42a,{m:{shiny:1}});
+    for(const [x,z] of [[10,10],[-10,10],[10,-10],[-10,-10]]){k.cyl(0.8,0.95,24,x,0,z,0xf2ecdc,{seg:12});k.cyl(1.35,1.35,0.4,x,18,z,0xd4c8ac,{seg:12});k.cyl(1.2,1.2,1,x,18.4,z,0xd4c8ac,{seg:12,open:1,m:{ds:1}});k.cone(1,3,x,24,z,0x2f8a86,{seg:12})}
+  },
+  k=>{ // 5 원형 경기장: 아치가 줄지어 있는 둥근 벽, 출입문 4개, 모래 바닥
+    const N=24,R=18;for(let i=0;i<N;i++){const a=i/N*Math.PI*2,x=Math.cos(a)*R,z=Math.sin(a)*R,ry=-a-Math.PI/2,gate=i%6===0;
+      if(!gate)k.box(4.75,14,2.6,x,0,z,0xc8b48c,{ry,m:{flat:1}});else k.box(4.75,9,2.6,x,5,z,0xc8b48c,{ry,m:{flat:1}});
+      for(const y of gate?[6.5,10.5]:[1.5,6.5,10.5]){const ox=Math.cos(a)*1.32,oz=Math.sin(a)*1.32;k.box(1.8,y===1.5?3.4:2.8,0.1,x+ox,y,z+oz,0x5a4a34,{ry})}
+      k.box(4.9,0.6,3,x,14,z,0xb09c74,{ry})}
+    k.cyl(15.5,15.5,0.1,0,0.05,0,0xd8c08a,{seg:32});
+  },
+  k=>{ // 6 송신탑: 철골 격자탑 + 접시 안테나 + 깜빡이는 경고등
+    const H=60,top=0.6,base=4,at=y=>base+(top-base)*y/H;
+    for(const [sx,sz] of [[1,1],[-1,1],[1,-1],[-1,-1]])k.beam([sx*base,0,sz*base],[sx*top,H,sz*top],0.28,0xb8b8b8);
+    for(let y=6;y<H;y+=6){const w=at(y);for(const [a,b] of [[[w,y,w],[-w,y,w]],[[-w,y,w],[-w,y,-w]],[[-w,y,-w],[w,y,-w]],[[w,y,-w],[w,y,w]]])k.beam(a,b,0.14,0xc8c8c8);
+      const w2=at(y-6);k.beam([w2,y-6,w2],[-w,y,w],0.1,0xa8a8a8);k.beam([-w2,y-6,-w2],[w,y,-w],0.1,0xa8a8a8)}
+    k.cyl(0.15,0.2,9,0,H,0,0xdddddd,{seg:8});k.cyl(1.4,1.4,0.3,1.4,40,0,0xeeeeee,{rz:Math.PI/2.4});k.cyl(1.1,1.1,0.3,-1.2,32,0.5,0xeeeeee,{rz:-Math.PI/2.4});
+    const red=LMM(0xff2a2a,{emis:1,own:1});for(const y of [30,45,60,69]){const m=k.sph(0.45,0,y,0,0xff2a2a,{seg:8,seg2:6});m.material=red}k.blink(red,0xff2a2a,0x3a0808,1.2);
+  },
+  k=>{ // 7 곡물 사일로: 원통 3개 + 위쪽 통로 + 계단탑 + 비스듬한 컨베이어
+    for(const x of [-7,0,7]){k.cyl(3.2,3.2,22,x,0,0,0xbab6ac);for(const y of [5,10,15,20])k.cyl(3.25,3.25,0.25,x,y,0,0x8a867c);k.sph(3.2,x,22,0,0xa8a49a,{half:1,sy:0.45})}
+    k.box(21,2,2.4,0,22,0,0x7a7468);k.box(3.2,27,3.2,12.5,0,0,0x8a8478);for(let y=3;y<26;y+=4)k.box(0.8,1,0.1,12.5,y,-1.65,0x2a2a2a);
+    k.beam([12.5,25,1.6],[22,1,1.6],0.9,0x6a6a6a);
+  },
+  k=>{ // 8 고딕 성당: 높은 본당 + 경사 지붕 + 버팀벽 + 첨탑 2개 + 장미창
+    k.box(12,14,30,0,0,4,0x9a9284,{m:{flat:1}});
+    const roof=k.put(new THREE.CylinderGeometry(7.2,7.2,30,3),0x4a4e58,0,16,4);roof.rotation.set(-Math.PI/2,0,0);roof.scale.set(1,1,0.55); // 삼각기둥 지붕
+    for(let z=-8;z<=17;z+=5)for(const s of [-1,1]){k.box(1.2,11,1.6,s*6.6,0,z,0x8a8274);k.box(1,4,0.15,s*6.05,5,z+2.5,0x2a4a7a)}
+    for(const x of [4.2,-4.2]){k.box(5.4,30,5.4,x,0,-12.5,0x8e8678,{m:{flat:1}});k.put(new THREE.ConeGeometry(3.3,10,4),0x4a4e58,x,35,-12.5,{ry:Math.PI/4});for(const y of [12,20])k.box(1.2,3.5,0.15,x,y,-15.25,0x1a2a4a)}
+    k.tor(2.2,0.35,0,9.5,-11.05,0x6a6252);k.cyl(2,2,0.1,0,9.5,-11.02,0x7a3a8a,{rx:Math.PI/2,seg:20});k.box(3,6,0.3,0,0,-11.2,0x3a2a1a);
+  },
+  k=>{ // 9 오층탑: 붉은 기둥층 + 넓게 뻗은 기와지붕 5단 + 금색 상륜
+    for(let i=0;i<5;i++){const w=10-1.6*i,y=3.2*i;k.box(w*0.8,2.4,w*0.8,0,y,0,0x9a2e22);for(const s of [-1,1])k.box(w*0.82,0.3,0.3,0,y+0.4,s*w*0.41,0xd8b048);
+      k.put(new THREE.ConeGeometry(w*0.85,1.3,4),0x2a3038,0,y+2.4+0.65,0,{ry:Math.PI/4,sy:1});k.box(w*1.18,0.2,w*1.18,0,y+2.35,0,0x3a4048)}
+    for(let i=0;i<5;i++)k.cyl(0.35,0.35,0.2,0,16.4+i*0.7,0,0xd4a42a,{seg:10});k.cyl(0.08,0.12,4,0,16,0,0xd4a42a,{seg:8});
+  },
+  k=>{ // 10 유리 원통 빌딩: 푸른 유리 + 층마다 띠 + 꼭대기 왕관
+    k.cyl(7,7,70,0,0,0,0x5a8ab8,{seg:28,m:{shiny:1}});for(let y=3.5;y<70;y+=3.5)k.cyl(7.08,7.08,0.3,0,y,0,0xd8dde4,{seg:28});
+    k.cyl(7.6,7.6,4,0,0,0,0x3a4a5a,{seg:28});k.cyl(5,6,4,0,70,0,0x8aa8c8,{seg:24,m:{shiny:1}});k.cyl(0.2,0.3,10,0,74,0,0xdddddd,{seg:8});
+  },
+  k=>{ // 11 굴뚝 공장: 톱니 지붕(채광창) + 빨강·흰 굴뚝 2개 + 배관
+    k.box(24,6,14,0,0,0,0x9a5a42);for(let i=0;i<4;i++){const x=-9+i*6;const t=k.put(new THREE.CylinderGeometry(3.6,3.6,14,3),0x6a6e76,x,7,0);t.rotation.set(-Math.PI/2,0,0);t.scale.set(1,1,0.55)}
+    for(const x of [-8,6]){for(let i=0;i<8;i++)k.cyl(1.4-0.04*i-0.04,1.4-0.04*i,5,x,i*5,-9.5,i%2?0xc8322a:0xeeeeee,{seg:14});k.cyl(1.2,1.2,0.6,x,40,-9.5,0x333333,{seg:14})}
+    k.beam([-12.5,3,-3],[-16,3,-3],0.7,0x8a8a8a);k.cyl(2,2,4,-16,0,-3,0xaaaaaa);k.box(3,4,0.3,4,0,-7.1,0x3a3a3a);
+  },
+  k=>{ // 12 관제탑: 흰 기둥 + 거꾸로 된 원뿔대 유리 관제실 + 회전 레이더
+    k.cyl(2.4,2.8,26,0,0,0,0xeceae4,{seg:16});for(let y=4;y<26;y+=5)k.box(0.8,1.4,0.1,0,y,-2.6,0x2a3a4a);
+    k.cyl(5.2,4.2,4.5,0,26,0,0x2a4a5a,{seg:20,m:{shiny:1}});k.cyl(5.3,5.3,0.4,0,30.5,0,0xdddddd,{seg:20});k.cyl(4.3,4.3,0.3,0,25.8,0,0xbbbbbb,{seg:20});
+    const rad=k.grp(0,30.9,0);k.put(new THREE.CylinderGeometry(0.15,0.15,1.6,8),0x666666,0,0.8,0,{to:rad});k.put(new THREE.BoxGeometry(3.4,0.9,0.15),0xdddddd,0,1.6,0,{to:rad});k.spin(rad,'y',1.6);
+  },
+  k=>{ // 13 개선 아치: 두 기둥 + 반원 아치(돌 블록) + 장식띠
+    for(const x of [-11,11]){k.box(4,18,4,x,0,0,0xd8d0bc,{m:{flat:1}});k.box(4.4,1,4.4,x,0,0,0xb8b09c);k.box(2.6,6,0.2,x,6,-2.05,0xa89c84)}
+    for(let i=0;i<13;i++){const a=Math.PI*(i+0.5)/13,r=11,x=Math.cos(a)*r,y=18+Math.sin(a)*r;k.box(2.8,2.6,4,x,y-1.3,0,i===6?0xc8a24a:0xd8d0bc,{rz:a-Math.PI/2,m:{flat:1}})}
+    k.box(30,1.2,4.4,0,29.6,0,0xb8b09c);k.box(12,3,4.2,0,30.8,0,0xd8d0bc);
+  },
+  k=>{ // 14 서커스 텐트: 빨강·흰 줄무늬 원통 + 줄무늬 원뿔 지붕 + 깃발
+    const n=16;for(let i=0;i<n;i++){const c=i%2?0xd8322a:0xf4f0e8;k.cyl(9,9,5,0,0,0,c,{seg:2,open:1,ts:i/n*Math.PI*2,tl:Math.PI*2/n,m:{ds:1}});const cn=new THREE.ConeGeometry(9.6,7,2,1,true,i/n*Math.PI*2,Math.PI*2/n);k.put(cn,c,0,8.5,0,{m:{ds:1}})}
+    k.cyl(9.1,9.1,0.4,0,5,0,0xd4a42a,{seg:32});k.cyl(0.12,0.12,4,0,12,0,0x444444,{seg:6});const flag=k.grp(0,15.4,0);k.put(new THREE.BoxGeometry(1.8,1,0.05),0xffd23a,0.9,0,0,{to:flag});k.spin(flag,'y',0.5);
+    k.box(3,3.6,0.4,0,0,-8.9,0x2a1a1a);
+  },
+  k=>{ // 15 오벨리스크: 3단 받침 + 가늘어지는 기둥 + 금빛 꼭대기
+    k.box(6,0.8,6,0,0,0,0x8a8478);k.box(4.4,0.8,4.4,0,0.8,0,0x9a9488);
+    k.put(new THREE.CylinderGeometry(1.3*1.414,1.5*1.414,38,4),0xc8b896,0,1.6+19,0,{ry:Math.PI/4,m:{flat:1}});
+    k.put(new THREE.ConeGeometry(1.3*1.414,3,4),0xe0b030,0,39.6+1.5,0,{ry:Math.PI/4,m:{shiny:1}});for(let y=6;y<36;y+=6)k.box(2.9-y*0.012,0.4,2.9-y*0.012,0,1.6+y,0,0x9a8a6a);
+  },
+  k=>{ // 16 천문대: 흰 원통 + 은색 돔 + 관측 틈 + 망원경
+    k.cyl(6,6,7,0,0,0,0xeeeeea,{seg:24});k.sph(6,0,7,0,0xc8ccd2,{half:1,m:{shiny:1},seg:28});k.box(1.8,0.3,6.2,0,12.7,0,0x22262c,{rx:0.0});
+    k.put(new THREE.CylinderGeometry(0.6,0.8,7,12),0x3a3e46,0,12.4,-3,{rx:-0.9});k.box(2,2.8,0.3,0,0,-6.05,0x3a3a3a);for(let i=0;i<4;i++)k.box(3,0.25,0.7,0,i*0.25,-6.6-i*0.7+2.1-2.1,0xbbbbbb);
+  },
+  k=>{ // 17 가스 탱크 단지: 다리 위의 둥근 탱크 3개 + 연결 배관 + 계단
+    const P3=[[-8,0],[4,6.5],[5,-7]];for(const [x,z] of P3){for(let i=0;i<6;i++){const a=i/6*Math.PI*2;k.cyl(0.25,0.3,7,x+Math.cos(a)*3.4,0,z+Math.sin(a)*3.4,0x6a6e74,{seg:8})}
+      k.sph(5,x,9,z,0xe8ecef,{m:{shiny:1}});k.tor(5.02,0.18,x,9,z,0x8a8e94,{rx:Math.PI/2});for(let i=0;i<10;i++)k.box(0.9,0.1,0.3,x+4.6,i*1.2+0.5,z,0x444444)}
+    k.beam([-8,3,0],[4,3,6.5],0.6,0x9a7a3a);k.beam([4,3,6.5],[5,3,-7],0.6,0x9a7a3a);k.beam([5,3,-7],[-8,3,0],0.6,0x9a7a3a);
+  },
+  k=>{ // 18 풍력발전기: 가늘고 높은 흰 기둥 + 몸체 + 돌아가는 날개 3개
+    k.cyl(0.6,1.2,55,0,0,0,0xf4f4f2,{seg:14});k.box(2.6,2.6,5,0,55,0.8,0xeeeeec);
+    const rot=k.grp(0,56.3,-2);k.put(new THREE.ConeGeometry(0.9,1.8,12),0xeeeeec,0,0,-0.6,{rx:-Math.PI/2,to:rot});
+    for(let i=0;i<3;i++){const arm=new THREE.Group();arm.rotation.z=i*Math.PI*2/3;rot.add(arm);const bl=new THREE.BoxGeometry(1.4,22,0.25);bl.translate(0,11.5,0);const p=bl.attributes.position;for(let j=0;j<p.count;j++){const y=p.getY(j);p.setX(j,p.getX(j)*(1-y/26))}k.put(bl,0xf4f4f2,0,0,0,{to:arm})}
+    k.spin(rot,'z',1.1);
+  },
+  k=>{ // 19 유리 온실: 반원통 유리 지붕 + 흰 갈비뼈 + 화단 (안으로 들어갈 수 있음)
+    const v=k.put(new THREE.CylinderGeometry(6,6,26,24,1,true,-Math.PI/2,Math.PI),0xbfe8c8,0,0,0,{m:{glass:1,op:0.35}});v.rotation.set(-Math.PI/2,0,0); // 반원통 유리 지붕
+    for(let z=-13;z<=13;z+=2.6)k.tor(6,0.12,0,0,z,0xffffff,{arc:Math.PI,seg:20});k.box(12.4,0.08,26,0,0,0,0x8a8478);
+    for(const x of [-2.6,2.6]){k.box(1.6,0.8,22,x,0,0,0x6a4a2e);for(let z=-10;z<=10;z+=2.5)k.sph(0.6,x,1.2,z,0x3a8a3a,{seg:8,seg2:6})}
+    for(const z of [-13,13])k.box(0.3,4,0.3,-5.8,0,z,0xffffff),k.box(0.3,4,0.3,5.8,0,z,0xffffff);
+  },
+];
+function mergeLandmark(g){ // 같은 재질 조각을 합쳐 그리기 횟수 줄이기 (움직이는 부품은 그대로)
+  const groups=new Map();
+  for(const o of g.children){if(!o.isMesh||o.material.transparent||o.material.isMeshBasicMaterial&&!o.material.color)continue;let a=groups.get(o.material);if(!a)groups.set(o.material,a=[]);a.push(o)}
+  for(const [mat,arr] of groups){
+    if(arr.length<2)continue;const pos=[],nor=[];let cs=false;
+    for(const o of arr){o.updateMatrix();const gg=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();gg.applyMatrix4(o.matrix);for(const v of gg.attributes.position.array)pos.push(v);for(const v of gg.attributes.normal.array)nor.push(v);gg.dispose();cs=cs||o.castShadow;g.remove(o);o.geometry.dispose()}
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));geo.computeBoundingSphere();
+    const m=new THREE.Mesh(geo,mat);m.castShadow=cs;m.receiveShadow=true;g.add(m);
+  }
+}
+function buildLandmark(mk){ // mk = [종류, x, z, 바닥 높이, 크기 배율]
+  const [t,x,z,base,s]=mk,g=new THREE.Group();CUR_MARKS.push(mk);LMV[t](lmKit(g));mergeLandmark(g);
+  g.position.set(x,base,z);g.scale.setScalar(s);mapGroup.add(g);g.updateMatrixWorld(true);
+  g.traverse(o=>{if(o.isMesh&&!(o.material.transparent&&o.material.opacity<0.3))solids.push(o)}); // 총알은 보이는 모양에 맞음
+}
+function updateLandmarks(dt){const now=performance.now()/1000;for(const a of LM_ANIM){if(a.obj)a.obj.rotation[a.ax]+=a.sp*dt;else a.mat.color.setHex(Math.floor(now/a.per*2)%2?a.c2:a.c1)}}
+
 function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총알 판정용 32x32 덩어리)
   const N=D.N,S=D.S,W=N+1,seg=2*S/N,H=D.H,T=D.theme,C=new Float32Array(W*W*3),TB={blobs:T.blobs||[],rects:D.small?(T.rects||[]):[]},cl=v=>Math.max(0,Math.min(1,v));
   for(let iz=0;iz<W;iz++)for(let ix=0;ix<W;ix++){ // 꼭짓점 색: 풀밭 → 마을 터/밭 → 가파른 곳은 바위 → 높은 곳은 눈
@@ -1010,7 +1166,8 @@ function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총
   const sea=new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),HQ?new THREE.MeshPhongMaterial({color:rgb(T.outerColor),shininess:90,specular:0x88aabb}):new THREE.MeshLambertMaterial({color:rgb(T.outerColor)}));
   sea.rotation.x=-Math.PI/2;sea.position.y=D.water||1;sea.material.transparent=true;sea.material.opacity=0.82;mapGroup.add(sea); // 바다 = 강물 높이 (강·물가가 잠김)
 }
-function buildBR(D){TERR=D;buildTerrain(D);mergedBoxes(D.boxes);for(const k of D.rocks)rock(k[0],k[1],k[2],k[3],k[4],0x8a8780,k[5]);instTrees(D.trees)}
+function buildBR(D){TERR=D;buildTerrain(D);mergedBoxes(D.boxes);for(const b of D.lmBoxes||[])boxes.push({minx:b[0],maxx:b[1],miny:b[2],maxy:b[3],minz:b[4],maxz:b[5]});for(const mk of D.marks||[])buildLandmark(mk); // 랜드마크 20종
+  for(const k of D.rocks)rock(k[0],k[1],k[2],k[3],k[4],0x8a8780,k[5]);instTrees(D.trees)}
 
 // ---------- 바닥 / 풍경 (테마에 따라) ----------
 function groundKind(T,x,z){
@@ -1090,7 +1247,7 @@ function buildSkyAndWalls(T){
     g.addColorStop(0,T.sky[0]);g.addColorStop(0.55,T.sky[1]);g.addColorStop(1,T.sky[2]);x.fillStyle=g;x.fillRect(0,0,16,256);
     if(scene.background&&scene.background.dispose)scene.background.dispose();scene.background=new THREE.CanvasTexture(c);
   }
-  const big=ARENA>50,fn=T.fogNear||(big?[140,50]:[90,35]),ff=T.fogFar||(big?[900,200]:[520,120]);scene.fog=HQ?new THREE.Fog(T.fog,fn[0],ff[0]):new THREE.Fog(T.fog,fn[1],ff[1]);
+  const big=ARENA>50,fn=T.fogNear||(big?[330,280]:[90,35]),ff=T.fogFar||(big?[1150,850]:[520,120]); /* 400m 경기장: 대각선 끝(약 570m)까지 보임 */scene.fog=HQ?new THREE.Fog(T.fog,fn[0],ff[0]):new THREE.Fog(T.fog,fn[1],ff[1]);
   if(HQ)sun.color.set(T.sun);
   for(const s of [[0,-ARENA,ARENA*2,1],[0,ARENA,ARENA*2,1],[-ARENA,0,1,ARENA*2],[ARENA,0,1,ARENA*2]]){ // 경기장 벽
     boxMesh(s[2],6,s[3],s[0],3,s[1],T.wall,'concrete',true);deco(s[0],s[1],s[2]+0.4,s[3]+0.4,6,6.3,0x7f848a,'concrete');
@@ -1110,9 +1267,9 @@ function loadMap(i){ // 맵 교체: 이전 맵을 지우고 새로 만듦
   const tiled=!MAPS[i].hidden;ARENA=tiled?200:MAPS[i].size||50; // 일반 맵은 4x4로 이어 붙인 400m
   camera.far=ARENA>500?2700:ARENA>50?1100:700;camera.updateProjectionMatrix(); // 맵 크기에 맞춰 시야 거리
   scene.remove(mapGroup);mapGroup.traverse(o=>{if(o.geometry)o.geometry.dispose()});TERR=null;
-  mapGroup=new THREE.Group();scene.add(mapGroup);boxes.length=0;solids.length=0;_treeN=0;
+  mapGroup=new THREE.Group();scene.add(mapGroup);boxes.length=0;solids.length=0;_treeN=0;LM_ANIM.length=0;CUR_MARKS.length=0;
   const T=tiled?tileTheme(MAPS[i].theme):MAPS[i].theme;
-  if(tiled){for(const t of TILES){TF=t;MAPS[i].build()}TF=null;mergeStatic();if(TALL_SEED){const TW=BRMAP.genTowers(TALL_SEED,ARENA,boxes,6);mergedBoxes(TW.boxes);TERR=BRMAP.genArenaTerrain(TALL_SEED,ARENA,boxes);TERR.theme=T;T.terrain=true;buildTerrain(TERR)}}else MAPS[i].build(); // 강·협곡·언덕 // 개인전·팀전: 높은 건물 (게임마다 새로)
+  if(tiled){for(const t of TILES){TF=t;MAPS[i].build()}TF=null;mergeStatic();if(TALL_SEED){const TW=BRMAP.genTowers(TALL_SEED,ARENA,boxes,6);mergedBoxes(TW.boxes);const LMK=BRMAP.genLandmarks(TALL_SEED,ARENA,boxes,8);for(const b of LMK.boxes)boxes.push({minx:b[0],maxx:b[1],miny:b[2],maxy:b[3],minz:b[4],maxz:b[5]});for(const mk of LMK.marks)buildLandmark(mk);TERR=BRMAP.genArenaTerrain(TALL_SEED,ARENA,boxes);TERR.theme=T;T.terrain=true;buildTerrain(TERR)}}else MAPS[i].build(); // 강·협곡·언덕 // 개인전·팀전: 높은 건물 (게임마다 새로)
   buildSkyAndWalls(T);buildGround(T);buildScenery(T);
   buildBoxGrid();drawMiniBase();
 }
@@ -1211,6 +1368,7 @@ function drawBig(){
     if(G.plane){const q=planeNow();if(q.t<1){x.setLineDash([10,8]);x.strokeStyle='#ffffffcc';x.lineWidth=3;x.beginPath();x.moveTo(X(G.plane.sx),X(G.plane.sz));x.lineTo(X(G.plane.ex),X(G.plane.ez));x.stroke();x.setLineDash([]);x.font=Math.round(S/30)+'px sans-serif';x.fillStyle='#fff';x.strokeStyle='#000b';x.lineWidth=3;txt('✈',X(q.x),X(q.z)+S/90)}} // 비행기 경로 (끝나면 사라짐)
     if(G.zone){const z=zoneNow();x.lineWidth=3;x.strokeStyle='#4a8dff';x.beginPath();x.arc(X(z.x),X(z.z),z.r*k,0,7);x.stroke();x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.arc(X(G.zone.nx),X(G.zone.nz),Math.max(1.5,G.zone.nr*k),0,7);x.stroke()}
   }
+  x.font=Math.round(S/62)+'px sans-serif';x.fillStyle='#ffe9a8';for(const mk of CUR_MARKS)txt('🏛 '+BRMAP.LM[mk[0]].n,X(mk[1]),X(mk[2])); // 랜드마크 이름
   for(const id in G.players){const p=G.players[id];if(!p.alive)continue;const mate=G.mode==='team'&&p.team===G.me.team;
     if(!mate&&!(p.firedAt&&now-p.firedAt<2000)&&!(G.radarUntil>now))continue;x.fillStyle=mate?'#4ade80':'#ff4040';x.beginPath();x.arc(X(p.g.position.x),X(p.g.position.z),5,0,7);x.fill()}
   const sx=G.spectPos?G.spectPos.x:P.x,sz=G.spectPos?G.spectPos.z:P.z,px=X(sx),pz=X(sz),fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),q=S/150;
@@ -1663,7 +1821,7 @@ function vehUpdate(dt,fx,fz){
     if(thr>0.1)v.spd+=(v.spd<-0.5?22:T.acc)*thr*dt;else if(thr<-0.1)v.spd-=(v.spd>0.5?22:7)*(-thr)*dt;else v.spd-=Math.sign(v.spd)*Math.min(Math.abs(v.spd),2.5*dt);
     if(brake)v.spd-=Math.sign(v.spd)*Math.min(Math.abs(v.spd),30*dt);
     const sy=Math.sin(v.yaw),cy=Math.cos(v.yaw);v.spd-=9.8*((groundH(v.x+sy*1.6,v.z+cy*1.6)-groundH(v.x-sy*1.6,v.z-cy*1.6))/3.2)*0.85*dt;
-    const max=T.max*(onRoadAt(v.x,v.z)?1:0.75)*(v.y<(BR_DATA.water||1)-0.3?0.45:1); // 물속은 느림if(v.spd>max)v.spd=Math.max(max,v.spd-12*dt);v.spd=Math.max(-9,v.spd);
+    const max=T.max*(onRoadAt(v.x,v.z)?1:0.75)*(v.y<(BR_DATA.water||1)-0.3?0.45:1); /* 물속은 느림 */if(v.spd>max)v.spd=Math.max(max,v.spd-12*dt);v.spd=Math.max(-9,v.spd);
     const turn=st*1.6*Math.min(1,Math.abs(v.spd)/5)*Math.sign(v.spd)*(Math.abs(v.spd)>18?0.7:1);v.yaw+=turn*dt;P.yaw+=turn*dt; // 카메라도 같이 돎
     const nx=v.x+Math.sin(v.yaw)*v.spd*dt,nz=v.z+Math.cos(v.yaw)*v.spd*dt;
     if(vehBlocked(v,nx,nz)){if(Math.abs(v.spd)>12){shakeT=Math.max(shakeT,0.3);beep(70,0.2,'sawtooth',0.08)}v.spd*=-0.25}
@@ -2195,7 +2353,7 @@ function loop(){
   for(let i=tracers.length-1;i>=0;i--){tracers[i].t-=dt;if(tracers[i].t<=0){scene.remove(tracers[i].l);tracers.splice(i,1)}}
   if(ARENA>50){const cx=camera.position.x,cz=camera.position.z,cy=groundH(cx,cz);sun.position.set(cx+38,cy+55,cz+22);sun.target.position.set(cx,cy,cz);sun.target.updateMatrixWorld()}
   else if(sun.target.position.x||sun.target.position.z){sun.position.set(HQ?38:30,HQ?55:50,HQ?22:20);sun.target.position.set(0,0,0);sun.target.updateMatrixWorld()}
-  updateParts(dt);updateThrowables(dt);updateRockets(dt);
+  updateParts(dt);updateThrowables(dt);updateRockets(dt);updateLandmarks(dt);
   gun.traverse(o=>o.layers.set(1)); // 내 총은 1번 층: 벽보다 앞에 따로 그림 (총이 벽을 뚫고 보이지 않게)
   renderer.render(scene,camera);
   if(gun.visible&&gun.children.length){const bg=scene.background,au=renderer.shadowMap.autoUpdate;scene.background=null;renderer.shadowMap.autoUpdate=false;renderer.autoClear=false;renderer.clearDepth();camera.layers.set(1);renderer.render(scene,camera);camera.layers.set(0);renderer.autoClear=true;renderer.shadowMap.autoUpdate=au;scene.background=bg}

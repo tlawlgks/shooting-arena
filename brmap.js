@@ -21,6 +21,52 @@
     return u + v <= 1 ? a + (d - a) * u + (b - a) * v : c + (b - c) * (1 - u) + (d - c) * (1 - v);
   }
 
+  // ===== 랜드마크 건축물 20종: 충돌 상자(서버·화면 공통). 모양은 shooter.html의 LMV가 그림 =====
+  // 좌표는 건물 중심 기준(크기 배율 적용 전). C(폭, 높이, 깊이, 바닥높이, 중심x, 중심z)
+  const C = (w, h, d, y0 = 0, cx = 0, cz = 0) => [cx - w / 2, cx + w / 2, y0, y0 + h, cz - d / 2, cz + d / 2];
+  const LM = [
+    { n: '등대', r: 5.5, sc: [0.9, 1.25], col: () => [C(8.4, 1, 8.4), C(6.4, 28, 6.4, 1), C(7.2, 0.3, 7.2, 29), C(4, 3, 4, 29.3), C(4.8, 2.4, 4.8, 32.3)] },
+    { n: '풍차', r: 5, sc: [0.9, 1.3], col: () => [C(7.6, 13, 7.6), C(6.6, 3.2, 6.6, 13)] },
+    { n: '급수탑', r: 5.5, sc: [0.9, 1.3], col: () => [C(0.8, 14, 0.8, 0, 3, 3), C(0.8, 14, 0.8, 0, -3, 3), C(0.8, 14, 0.8, 0, 3, -3), C(0.8, 14, 0.8, 0, -3, -3), C(9, 5, 9, 14), C(6, 2, 6, 19)] },
+    { n: '계단 피라미드', r: 17.5, sc: [1, 1.2], col: () => { const o = []; for (let k = 0; k < 7; k++) { const hs = 16 - 1.8 * k; o.push(C(hs * 2, 2.4, hs * 2, 2.4 * k)); } for (let i = 0; i < 35; i++) o.push([-1.6, 1.6, 0, (i + 1) * 0.48, -17.2 + i * 0.36, -17.2 + (i + 1) * 0.36]); o.push(C(5, 4, 5, 16.8)); return o; } },
+    { n: '돔 사원', r: 11.5, sc: [0.9, 1.2], col: () => [C(16, 9, 16), C(12, 2, 12, 9), C(9, 5, 9, 11), C(1.8, 24, 1.8, 0, 10, 10), C(1.8, 24, 1.8, 0, -10, 10), C(1.8, 24, 1.8, 0, 10, -10), C(1.8, 24, 1.8, 0, -10, -10)] },
+    { n: '원형 경기장', r: 20, sc: [0.9, 1.15], col: () => { const o = []; for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2, x = Math.cos(a) * 18, z = Math.sin(a) * 18, gate = i % 12 === 0; o.push(C(2.8, gate ? 9 : 14, 2.8, gate ? 5 : 0, x, z)); } return o; } },
+    { n: '송신탑', r: 4.5, sc: [0.85, 1.3], col: () => [C(2.4, 60, 2.4), C(1.2, 1.5, 1.2, 0, 4, 4), C(1.2, 1.5, 1.2, 0, -4, 4), C(1.2, 1.5, 1.2, 0, 4, -4), C(1.2, 1.5, 1.2, 0, -4, -4)] },
+    { n: '곡물 사일로', r: 13, sc: [0.9, 1.2], col: () => [C(6.4, 22, 6.4, 0, -7), C(6.4, 22, 6.4, 0, 0), C(6.4, 22, 6.4, 0, 7), C(21, 2, 2.4, 22), C(3.2, 27, 3.2, 0, 12.5)] },
+    { n: '고딕 성당', r: 17, sc: [0.9, 1.15], col: () => [C(12, 14, 30, 0, 0, 4), C(9, 5, 30, 14, 0, 4), C(5.4, 30, 5.4, 0, 4.2, -12.5), C(5.4, 30, 5.4, 0, -4.2, -12.5), C(3, 8, 3, 30, 4.2, -12.5), C(3, 8, 3, 30, -4.2, -12.5)] },
+    { n: '오층탑', r: 7, sc: [0.9, 1.3], col: () => { const o = []; for (let i = 0; i < 5; i++) { const w = (10 - 1.6 * i) * 0.8; o.push(C(w, 3.2, w, 3.2 * i)); } o.push(C(0.6, 4, 0.6, 16)); return o; } },
+    { n: '유리 원통 빌딩', r: 7.5, sc: [0.8, 1.3], col: () => [C(12.4, 70, 12.4), C(9, 4, 9, 70)] },
+    { n: '굴뚝 공장', r: 14, sc: [0.9, 1.2], col: () => [C(24, 8, 14), C(3, 40, 3, 0, -8, -9.5), C(3, 40, 3, 0, 6, -9.5)] },
+    { n: '관제탑', r: 5.5, sc: [0.9, 1.3], col: () => [C(4.8, 26, 4.8), C(10, 4.5, 10, 26), C(10.6, 0.4, 10.6, 30.5)] },
+    { n: '개선 아치', r: 13.5, sc: [0.9, 1.3], col: () => [C(4, 18, 4, 0, -11, 0), C(4, 18, 4, 0, 11, 0), C(26, 8, 4, 18, 0, 0)] },
+    { n: '서커스 텐트', r: 10, sc: [0.9, 1.2], col: () => [C(17, 5, 17), C(10, 4, 10, 5), C(4, 3, 4, 9)] },
+    { n: '오벨리스크', r: 3.2, sc: [0.9, 1.3], col: () => [C(6, 0.8, 6), C(4.4, 0.8, 4.4, 0.8), C(3, 38, 3, 1.6), C(2, 3, 2, 39.6)] },
+    { n: '천문대', r: 6.5, sc: [0.9, 1.3], col: () => [C(12, 7, 12), C(9, 5, 9, 7)] },
+    { n: '가스 탱크 단지', r: 13, sc: [0.9, 1.15], col: () => [C(8.4, 13.5, 8.4, 0, -8, 0), C(8.4, 13.5, 8.4, 0, 4, 6.5), C(8.4, 13.5, 8.4, 0, 5, -7)] },
+    { n: '풍력발전기', r: 3, sc: [0.85, 1.25], col: () => [C(2.4, 55, 2.4), C(2.6, 2.6, 5, 55, 0, 0.8)] },
+    { n: '유리 온실', r: 13.5, sc: [0.9, 1.2], col: () => [C(0.4, 4, 26, 0, 5.8, 0), C(0.4, 4, 26, 0, -5.8, 0), C(12, 0.6, 26, 5.4), C(1.6, 0.8, 22, 0, 2.6, 0), C(1.6, 0.8, 22, 0, -2.6, 0)] },
+  ];
+  LM.forEach(l => { l.boxes = l.col(); });
+  const lmBoxesOf = (t, x, z, base, s) => LM[t].boxes.map(b => [x + b[0] * s, x + b[1] * s, base + b[2] * s, base + b[3] * s, z + b[4] * s, z + b[5] * s].map(v => Math.round(v * 100) / 100));
+  // 개인전·팀전: 빈 자리에 랜드마크를 랜덤으로 (모두 같은 시드)
+  function genLandmarks(seed, S, occ, count) {
+    const R = rng((seed ^ 0x2c1b3c6d) >>> 0), rnd = (a, b) => a + R() * (b - a), types = [...Array(LM.length).keys()];
+    for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [types[i], types[j]] = [types[j], types[i]]; }
+    const marks = [], boxes = [], placed = [], CS = 8, occG = new Set(); // 이미 있는 건물 칸 (빠른 검사)
+    for (const q of occ) if (q.miny < 4) for (let cx = Math.floor(q.minx / CS); cx <= Math.floor(q.maxx / CS); cx++) for (let cz = Math.floor(q.minz / CS); cz <= Math.floor(q.maxz / CS); cz++) occG.add(cx * 1000 + cz);
+    const busy = (x0, x1, z0, z1) => { for (let cx = Math.floor(x0 / CS); cx <= Math.floor(x1 / CS); cx++) for (let cz = Math.floor(z0 / CS); cz <= Math.floor(z1 / CS); cz++) if (occG.has(cx * 1000 + cz)) return true; return false; };
+    for (const t of types) {
+      if (marks.length >= count) break;
+      const s = Math.round(rnd(LM[t].sc[0], LM[t].sc[1]) * 100) / 100, rr = LM[t].r * s + 3;
+      for (let k = 0; k < 250; k++) {
+        const x = rnd(-S + rr + 4, S - rr - 4), z = rnd(-S + rr + 4, S - rr - 4);
+        if (busy(x - rr, x + rr, z - rr, z + rr) || placed.some(p => Math.hypot(p[0] - x, p[1] - z) < p[2] + rr + 4)) continue;
+        marks.push([t, Math.round(x * 100) / 100, Math.round(z * 100) / 100, 0, s]); boxes.push(...lmBoxesOf(t, x, z, 0, s)); placed.push([x, z, rr]); break;
+      }
+    }
+    return { marks, boxes };
+  }
+
   function genBR(seed) {
     const R = rng(seed), rnd = (a, b) => a + R() * (b - a), ri = (a, b) => Math.floor(a + R() * (b - a + 1)), pick = a => a[Math.floor(R() * a.length)];
     const S = 2000, T = 0.35, SH = 3.2, N = 256; // 섬 반 크기(4km x 4km), 벽 두께, 층 높이, 높이맵 칸 수
@@ -89,6 +135,10 @@
     const tall = [], castles = [], camps = [], spires = [], away = (x, z, d) => !towns.some(t => Math.hypot(t[0] - x, t[1] - z) < t[2] + d) && ![...castles, ...camps, ...spires].some(q => Math.hypot(q[0] - x, q[1] - z) < q[3] + d);
     for (let tries = 0; castles.length < 3 && tries < 3000; tries++) { const x = rnd(-1650, 1650), z = rnd(-1650, 1650), h = raw(x, z); if (h < 6 || h > 190 || slope(x, z) > 16 || !away(x, z, 160)) continue; castles.push([x, z, h, 34]); sites.push([x, z, 34, 45, h]); }
     for (let tries = 0; camps.length < 5 && tries < 3000; tries++) { const x = rnd(-1700, 1700), z = rnd(-1700, 1700), h = raw(x, z); if (h < 4 || h > 120 || slope(x, z) > 9 || !away(x, z, 140)) continue; camps.push([x, z, h, 36]); sites.push([x, z, 36, 40, h]); }
+    const lmk = []; // 랜드마크 20종 터 (종류마다 1개)
+    for (let t = 0; t < LM.length; t++) { const s = Math.round(rnd(LM[t].sc[0], LM[t].sc[1]) * 100) / 100, rr = LM[t].r * s + 4;
+      for (let tries = 0; tries < 600; tries++) { const x = rnd(-1750, 1750), z = rnd(-1750, 1750); if (!away(x, z, rr + 60) || lmk.some(q => Math.hypot(q[1] - x, q[2] - z) < q[5] + rr + 60)) continue; const h = raw(x, z); if (h < 4 || h > 160 || slope(x, z) > 11) continue;
+        lmk.push([t, x, z, h, s, rr]); sites.push([x, z, rr, 30, h]); break; } }
     for (let tries = 0; spires.length < 9 && tries < 3000; tries++) { const x = rnd(-1750, 1750), z = rnd(-1750, 1750), h = raw(x, z); if (h < 4 || h > 220 || slope(x, z) > 14 || !away(x, z, 70)) continue; spires.push([x, z, h, 9]); sites.push([x, z, 9, 22, h]); }
 
     // ---------- 3. 높이맵 (터는 평평하게 다지고 주변과 부드럽게 이음) ----------
@@ -277,6 +327,12 @@
       for (let i = 0; i < 9; i++) { const ang = R() * 6.283, dist = rnd(tr * 0.3, tr + 40), x = tx + Math.cos(ang) * dist, z = tz + Math.sin(ang) * dist; if (fits(x - 0.6, x + 0.6, z - 0.6, z + 0.6, 1.2)) spawns.push([f2(x), f2(z)]); }
     }
     for (const [x, z, base] of lone) building(x, z, R() < 0.7 ? 'h1' : 'h2', base); // 외딴집
+    const lmBoxes = [], marks = [];
+    for (const [t, x, z, h, s, rr] of lmk) { // 랜드마크: 충돌 상자 + 주변 아이템
+      lmBoxes.push(...lmBoxesOf(t, x, z, h, s)); marks.push([t, f2(x), f2(z), f2(h), s]); foot.push([x - rr, x + rr, z - rr, z + rr]);
+      for (let i = 0; i < 3; i++) { const a = R() * 6.283; loot.push([f2(x + Math.cos(a) * (rr - 1)), f2(h), f2(z + Math.sin(a) * (rr - 1))]); }
+      if (t === 3) { loot.push([f2(x - 1), f2(h + 16.8 * s), f2(z - 1.8 * s)]); loot.push([f2(x + 1), f2(h + 16.8 * s), f2(z - 1.8 * s)]); } // 피라미드 꼭대기
+    }
     for (const [x, z, h] of castles) { BY = h; castle(x, z); BY = 0; } // 성
     for (const [x, z, h] of camps) { BY = h; camp(x, z); BY = 0; }     // 군부대
     for (const [x, z, h] of spires) { BY = h; if (fits(x - 6.5, x + 6.5, z - 6.5, z + 6.5, 2)) spire(x, z); BY = 0; } // 높은 건물
@@ -305,7 +361,7 @@
         vehicles.push([f2(x), f2(z), f2((ax ? Math.PI / 2 : 0) + (R() < 0.5 ? Math.PI : 0)), R() < 0.6 ? 'jeep' : 'buggy']);
       }
     }
-    return { S, N, H, boxes, loot, trees, rocks, towns, roads, fields, spawns, peaks, vehicles, tall, water: WATER, castles: castles.map(c => [f2(c[0]), f2(c[1])]), camps: camps.map(c => [f2(c[0]), f2(c[1])]) };
+    return { S, N, H, boxes, loot, trees, rocks, towns, roads, fields, spawns, peaks, vehicles, tall, marks, lmBoxes, water: WATER, castles: castles.map(c => [f2(c[0]), f2(c[1])]), camps: camps.map(c => [f2(c[0]), f2(c[1])]) };
   }
   // 개인전·팀전 지형: 강 · 좁은 협곡 · 낮은 언덕 (산은 없음). 건물 밑과 주변은 평평하게 둠
   function genArenaTerrain(seed, S, occ) {
@@ -381,7 +437,7 @@
     jeep: { n: '지프', seats: [[0.5, 1.5, 0.25], [-0.5, 1.5, 0.25], [0.5, 1.5, -0.95], [-0.5, 1.5, -0.95]], max: 25, acc: 8, hp: 600, len: 4.4, wid: 2.1 },
     buggy: { n: '버기', seats: [[0.42, 1.0, -0.1], [-0.42, 1.0, -0.1]], max: 31, acc: 10, hp: 320, len: 3.6, wid: 1.8 },
   };
-  const API = { genBR, heightAt, VEH, genTowers, genArenaTerrain };
+  const API = { genBR, heightAt, VEH, genTowers, genArenaTerrain, genLandmarks, LM };
   g.BRMAP = API;
   if (typeof module !== 'undefined') module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -313,6 +313,7 @@ function buildBRGrid(r, map) { // 충돌·시야 계산용 격자 (8m 칸)
   const list = map.boxes.map(b => b.slice(0, 6)).filter(b => b[3] - b[2] > 0.3);
   for (const [x, z, w, d, h, y] of map.rocks) list.push([x - w / 2, x + w / 2, y, y + h + 0.3, z - d / 2, z + d / 2]);
   for (const [x, z, , y] of map.trees) list.push([x - 0.4, x + 0.4, y, y + 5, z - 0.4, z + 0.4]);
+  for (const b of map.lmBoxes || []) list.push(b); // 랜드마크 건축물
   r.brMap = map;
   const G = new Map(), C = 8;
   list.forEach((b, i) => { for (let x = Math.floor(b[0] / C); x <= Math.floor(b[1] / C); x++) for (let z = Math.floor(b[4] / C); z <= Math.floor(b[5] / C); z++) { const k = x * 1000 + z; if (!G.has(k)) G.set(k, []); G.get(k).push(i); } });
