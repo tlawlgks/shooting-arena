@@ -976,7 +976,7 @@ function instTrees(list){ // 나무 수백 그루를 인스턴스로 (줄기 1�
 // =====================================================================
 // 랜드마크 건축물 20종: 원기둥·원뿔·돔·아치 등으로 만든 3D 모델 (충돌 상자는 brmap.js의 LM)
 // =====================================================================
-const _lmm={},LM_ANIM=[],CUR_MARKS=[];
+const _lmm={},LM_ANIM=[],CUR_MARKS=[];let CUR_DISTRICTS=[];
 function LMM(c,o){const k=c+'|'+(o?JSON.stringify(o):'');if(_lmm[k])return _lmm[k];let m;
   if(o&&o.glass)m=new THREE.MeshPhongMaterial({color:c,transparent:true,opacity:o.op||0.5,shininess:120,specular:0xffffff,side:THREE.DoubleSide,depthWrite:false});
   else if(o&&o.emis)m=new THREE.MeshBasicMaterial({color:c});
@@ -1127,6 +1127,18 @@ function buildLandmark(mk){ // mk = [종류, x, z, 바닥 높이, 크기 배율]
   g.position.set(x,base,z);g.scale.setScalar(s);mapGroup.add(g);g.updateMatrixWorld(true);
   g.traverse(o=>{if(o.isMesh&&!(o.material.transparent&&o.material.opacity<0.3))solids.push(o)}); // 총알은 보이는 모양에 맞음
 }
+function buildProps(items,T){ // 자연 지형지물: 울퉁불퉁한 바위 모양 (충돌 상자와 같은 크기)
+  const col=T&&T.outer==='desert'?0xb48a5c:T&&T.outer==='snow'?0x9aa2a8:0x8a8780,col2=T&&T.outer==='desert'?0xa0784c:0x7a7670;
+  for(const [type,x,z,y,parts] of items){
+    const g=new THREE.Group();g.position.set(x,y,z);mapGroup.add(g);
+    parts.forEach((q,j)=>{const [px,py,pz,w,hh,d]=q,c=j%2?col:col2;let m;
+      if(type===2){m=new THREE.Mesh(jitter(new THREE.CylinderGeometry(0.42,0.55,1,7,3),0.06),rockMat(c));m.scale.set(w*1.15,hh,d*1.15);m.position.set(px,py+hh/2,pz)} // 돌기둥
+      else if(type===3){m=new THREE.Mesh(new THREE.BoxGeometry(w,hh,d),rockMat(0x9a968c));m.position.set(px,py+hh/2,pz);m.rotation.y=-Math.atan2(pz,px)} // 거석
+      else{m=new THREE.Mesh(ROCKG[j%8]||(ROCKG[j%8]=jitter(new THREE.DodecahedronGeometry(1,1),0.14)),rockMat(c));m.scale.set(w*0.62,hh*0.62,d*0.62);m.position.set(px,py+hh*0.45,pz);m.rotation.y=j*1.7}
+      m.castShadow=m.receiveShadow=true;g.add(m)});
+    g.updateMatrixWorld(true);g.traverse(o=>{if(o.isMesh)solids.push(o)});
+  }
+}
 function updateLandmarks(dt){const now=performance.now()/1000;for(const a of LM_ANIM){if(a.obj)a.obj.rotation[a.ax]+=a.sp*dt;else a.mat.color.setHex(Math.floor(now/a.per*2)%2?a.c2:a.c1)}}
 
 function buildTerrain(D){ // 높이맵 → 지형 (화면용 8x8 덩어리 + 총알 판정용 32x32 덩어리)
@@ -1267,9 +1279,13 @@ function loadMap(i){ // 맵 교체: 이전 맵을 지우고 새로 만듦
   const tiled=!MAPS[i].hidden;ARENA=tiled?200:MAPS[i].size||50; // 일반 맵은 4x4로 이어 붙인 400m
   camera.far=ARENA>500?2700:ARENA>50?1100:700;camera.updateProjectionMatrix(); // 맵 크기에 맞춰 시야 거리
   scene.remove(mapGroup);mapGroup.traverse(o=>{if(o.geometry)o.geometry.dispose()});TERR=null;
-  mapGroup=new THREE.Group();scene.add(mapGroup);boxes.length=0;solids.length=0;_treeN=0;LM_ANIM.length=0;CUR_MARKS.length=0;
+  mapGroup=new THREE.Group();scene.add(mapGroup);boxes.length=0;solids.length=0;_treeN=0;LM_ANIM.length=0;CUR_MARKS.length=0;CUR_DISTRICTS=[];
   const T=tiled?tileTheme(MAPS[i].theme):MAPS[i].theme;
-  if(tiled){for(const t of TILES){TF=t;MAPS[i].build()}TF=null;mergeStatic();if(TALL_SEED){const TW=BRMAP.genTowers(TALL_SEED,ARENA,boxes,6);mergedBoxes(TW.boxes);const LMK=BRMAP.genLandmarks(TALL_SEED,ARENA,boxes,8);for(const b of LMK.boxes)boxes.push({minx:b[0],maxx:b[1],miny:b[2],maxy:b[3],minz:b[4],maxz:b[5]});for(const mk of LMK.marks)buildLandmark(mk);TERR=BRMAP.genArenaTerrain(TALL_SEED,ARENA,boxes);TERR.theme=T;T.terrain=true;buildTerrain(TERR)}}else MAPS[i].build(); // 강·협곡·언덕 // 개인전·팀전: 높은 건물 (게임마다 새로)
+  if(tiled){
+    let keep=TILES.map((t,k)=>k);if(TALL_SEED){const rr=BRMAP.rng((TALL_SEED^0x9e3779b9)>>>0);for(let k=keep.length-1;k>0;k--){const j=Math.floor(rr()*(k+1));[keep[k],keep[j]]=[keep[j],keep[k]]}keep=keep.slice(0,6)} // 판마다 원래 맵은 6칸만
+    const empty=[];TILES.forEach((t,k)=>{if(keep.includes(k)){TF=t;MAPS[i].build()}else empty.push([t.ox,t.oz])});TF=null;mergeStatic();
+    if(TALL_SEED){const FL=BRMAP.genArenaFill(TALL_SEED,ARENA,boxes,empty);mergedBoxes(FL.boxes);CUR_DISTRICTS=FL.districts; // 나머지 10칸: 랜덤 구역
+    const TW=BRMAP.genTowers(TALL_SEED,ARENA,boxes,3);mergedBoxes(TW.boxes);const LMK=BRMAP.genLandmarks(TALL_SEED,ARENA,boxes,10);for(const b of LMK.boxes)boxes.push({minx:b[0],maxx:b[1],miny:b[2],maxy:b[3],minz:b[4],maxz:b[5]});for(const mk of LMK.marks)buildLandmark(mk);TERR=BRMAP.genArenaTerrain(TALL_SEED,ARENA,boxes);TERR.theme=T;T.terrain=true;buildTerrain(TERR);const PR=BRMAP.genArenaProps(TALL_SEED,ARENA,boxes,TERR);for(const b of PR.boxes)boxes.push({minx:b[0],maxx:b[1],miny:b[2],maxy:b[3],minz:b[4],maxz:b[5]});buildProps(PR.items,T)}}else MAPS[i].build(); /* 강·협곡·언덕·연못·고원·분화구 + 자연물 */ // 개인전·팀전: 높은 건물 (게임마다 새로)
   buildSkyAndWalls(T);buildGround(T);buildScenery(T);
   buildBoxGrid();drawMiniBase();
 }
@@ -1368,7 +1384,7 @@ function drawBig(){
     if(G.plane){const q=planeNow();if(q.t<1){x.setLineDash([10,8]);x.strokeStyle='#ffffffcc';x.lineWidth=3;x.beginPath();x.moveTo(X(G.plane.sx),X(G.plane.sz));x.lineTo(X(G.plane.ex),X(G.plane.ez));x.stroke();x.setLineDash([]);x.font=Math.round(S/30)+'px sans-serif';x.fillStyle='#fff';x.strokeStyle='#000b';x.lineWidth=3;txt('✈',X(q.x),X(q.z)+S/90)}} // 비행기 경로 (끝나면 사라짐)
     if(G.zone){const z=zoneNow();x.lineWidth=3;x.strokeStyle='#4a8dff';x.beginPath();x.arc(X(z.x),X(z.z),z.r*k,0,7);x.stroke();x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.arc(X(G.zone.nx),X(G.zone.nz),Math.max(1.5,G.zone.nr*k),0,7);x.stroke()}
   }
-  x.font=Math.round(S/62)+'px sans-serif';x.fillStyle='#ffe9a8';for(const mk of CUR_MARKS)txt('🏛 '+BRMAP.LM[mk[0]].n,X(mk[1]),X(mk[2])); // 랜드마크 이름
+  x.font=Math.round(S/62)+'px sans-serif';x.fillStyle='#ffe9a8';for(const mk of CUR_MARKS)txt('🏛 '+BRMAP.LM[mk[0]].n,X(mk[1]),X(mk[2]));x.fillStyle='#cfe3ff';for(const d of CUR_DISTRICTS)txt(BRMAP.DISTRICTS[d[2]],X(d[0]),X(d[1])-S/40); /* 랜드마크·구역 이름 */
   for(const id in G.players){const p=G.players[id];if(!p.alive)continue;const mate=G.mode==='team'&&p.team===G.me.team;
     if(!mate&&!(p.firedAt&&now-p.firedAt<2000)&&!(G.radarUntil>now))continue;x.fillStyle=mate?'#4ade80':'#ff4040';x.beginPath();x.arc(X(p.g.position.x),X(p.g.position.z),5,0,7);x.fill()}
   const sx=G.spectPos?G.spectPos.x:P.x,sz=G.spectPos?G.spectPos.z:P.z,px=X(sx),pz=X(sz),fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw),q=S/150;
